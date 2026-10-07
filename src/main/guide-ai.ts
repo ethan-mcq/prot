@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { pullKey, type Guide, type PullDetail, type PullRef } from '@shared/types'
 import { GUIDE_SCHEMA, buildGuidePrompt, buildStoryGuide, parseAiGuide } from '@shared/guide'
@@ -14,7 +14,10 @@ function cacheFileName(ref: PullRef): string {
   return `${ref.owner}__${ref.repo}__${ref.number}.json`
 }
 
-function isCachedGuide(value: unknown): value is Guide {
+type CachedGuide = Omit<Extract<Guide, { source: 'ai' }>, 'questions'> & { questions?: unknown }
+
+// The shape a cached guide needs to be reusable. Fields we can compute from code (questions) are backfilled, not regenerated.
+function isCachedGuide(value: unknown): value is CachedGuide {
   if (typeof value !== 'object' || value === null) return false
   const guide = value as Record<string, unknown>
   return (
@@ -24,7 +27,6 @@ function isCachedGuide(value: unknown): value is Guide {
     typeof guide.symbols === 'object' &&
     guide.symbols !== null &&
     typeof (guide.overview as { synopsis?: unknown } | undefined)?.synopsis === 'string' &&
-    Array.isArray(guide.questions) &&
     typeof guide.coverage === 'object' &&
     guide.coverage !== null
   )
@@ -54,14 +56,25 @@ export class GuideService {
     const file = join(this.cacheDir, cacheFileName(ref))
     if (!refresh) {
       const cached = await this.readCache(file)
-      if (cached) return cached
+      if (cached && Array.isArray(cached.questions)) return cached as Guide
+      if (cached) {
+        const upgraded = await this.backfillQuestions(ref, cached)
+        await this.writeCache(ref, file, upgraded)
+        return upgraded
+      }
     }
     const guide = await this.generate(ref, await this.pulls.cached(ref))
-    await this.writeCache(file, guide)
+    await this.writeCache(ref, file, guide)
     return guide
   }
 
-  private async readCache(file: string): Promise<Guide | null> {
+  private async backfillQuestions(ref: PullRef, cached: CachedGuide): Promise<Guide> {
+    const detail = await this.pulls.cached(ref)
+    const { index } = await this.code.index(ref, detail)
+    return { ...cached, questions: buildStoryGuide(detail, index).questions }
+  }
+
+  private async readCache(file: string): Promise<CachedGuide | null> {
     try {
       const parsed: unknown = JSON.parse(await readFile(file, 'utf8'))
       return isCachedGuide(parsed) ? parsed : null
@@ -70,11 +83,20 @@ export class GuideService {
     }
   }
 
-  private async writeCache(file: string, guide: Guide): Promise<void> {
+  private async writeCache(ref: PullRef, file: string, guide: Guide): Promise<void> {
     await mkdir(this.cacheDir, { recursive: true })
     const tmp = `${file}.tmp`
     await writeFile(tmp, JSON.stringify(guide))
     await rename(tmp, file)
+    await this.removeLegacyCache(ref)
+  }
+
+  // Guides were once cached per head sha; those files are never read again.
+  private async removeLegacyCache(ref: PullRef): Promise<void> {
+    const prefix = cacheFileName(ref).replace(/\.json$/, '__')
+    for (const name of await readdir(this.cacheDir)) {
+      if (name.startsWith(prefix) && name.endsWith('.json')) await rm(join(this.cacheDir, name), { force: true })
+    }
   }
 
   private async generate(ref: PullRef, detail: PullDetail): Promise<Guide> {
