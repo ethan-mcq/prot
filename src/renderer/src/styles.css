@@ -33,11 +33,16 @@
   --ring: #a1a1aa;
   --added: #1a7f37;
   --added-bg: #e9f8ee;
-  --added-line: #dafbe1;
+  --added-line: #e6ffec;
   --removed: #cf222e;
   --removed-bg: #ffebe9;
   --removed-line: #ffebe9;
   --grid: #f0f0ee;
+  --dot: #dcdcd8;
+  --modified: #b4690e;
+  --modified-bg: #fdf4e3;
+  --context-pill: #fbfbfa;
+  --soft-shadow: 0 1px 2px rgb(24 24 27 / 0.04), 0 2px 8px rgb(24 24 27 / 0.05);
 }
 
 .dark {
@@ -70,6 +75,11 @@
   --removed-bg: #2d1416;
   --removed-line: #2a1214;
   --grid: #19191b;
+  --dot: #2b2b2e;
+  --modified: #e0a243;
+  --modified-bg: #2a2112;
+  --context-pill: #18181a;
+  --soft-shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 4px 12px rgb(0 0 0 / 0.25);
 }
 
 @theme inline {
@@ -109,6 +119,11 @@
   --color-removed-bg: var(--removed-bg);
   --color-removed-line: var(--removed-line);
   --color-grid: var(--grid);
+  --color-dot: var(--dot);
+  --color-modified: var(--modified);
+  --color-modified-bg: var(--modified-bg);
+  --color-context-pill: var(--context-pill);
+  --shadow-soft: var(--soft-shadow);
 }
 
 @layer base {
@@ -125,5 +140,32 @@
     font-feature-settings: 'cv11', 'ss01';
     -webkit-font-smoothing: antialiased;
     overflow: hidden;
+  }
+}
+
+@layer components {
+  .drag-region {
+    -webkit-app-region: drag;
+  }
+  .no-drag {
+    -webkit-app-region: no-drag;
+  }
+  .dot-grid {
+    background-image: radial-gradient(var(--dot) 1px, transparent 1px);
+    background-size: 16px 16px;
+    background-position: -8px -8px;
+  }
+  .micro-label {
+    @apply font-mono text-[10.5px] font-medium tracking-[0.12em] text-muted-foreground uppercase;
+  }
+  .tok {
+    color: var(--shiki-light);
+  }
+  .dark .tok {
+    color: var(--shiki-dark);
+  }
+  .scroll-quiet {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
   }
 }

@@ -1,0 +1,124 @@
+import { LogOut, Settings as SettingsIcon } from 'lucide-react'
+import type { Theme } from '@shared/types'
+import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Separator } from '@/components/ui/separator'
+import { Switch } from '@/components/ui/switch'
+import { usePrefs } from '@/lib/prefs'
+import { cn } from '@/lib/utils'
+
+const THEMES: { value: Theme; label: string }[] = [
+  { value: 'system', label: 'System' },
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' }
+]
+
+const POLL_OPTIONS: { seconds: number; label: string }[] = [
+  { seconds: 30, label: 'Every 30 seconds' },
+  { seconds: 60, label: 'Every minute' },
+  { seconds: 120, label: 'Every 2 minutes' },
+  { seconds: 300, label: 'Every 5 minutes' },
+  { seconds: 900, label: 'Every 15 minutes' }
+]
+
+export function SettingsMenu({ onSignOut }: { onSignOut: () => void }) {
+  const { settings, updateSettings } = usePrefs()
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="ghost" size="icon-sm" aria-label="Settings" className="text-muted-foreground">
+          <SettingsIcon className="size-4" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent side="top" align="end" className="w-80 space-y-4 p-4">
+        <div className="space-y-2">
+          <p className="micro-label">Theme</p>
+          <div role="radiogroup" aria-label="Theme" className="grid grid-cols-3 rounded-lg border bg-muted p-0.5">
+            {THEMES.map((theme) => (
+              <button
+                key={theme.value}
+                type="button"
+                role="radio"
+                aria-checked={settings.theme === theme.value}
+                onClick={() => void updateSettings({ theme: theme.value })}
+                className={cn(
+                  'rounded-md py-1 text-xs transition-colors',
+                  settings.theme === theme.value
+                    ? 'bg-background font-medium shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                {theme.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="space-y-2">
+          <p className="micro-label">Check for pull requests</p>
+          <Select
+            value={String(settings.pollSeconds)}
+            onValueChange={(value) => void updateSettings({ pollSeconds: Number(value) })}
+          >
+            <SelectTrigger aria-label="Check for pull requests" className="w-full" size="sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {POLL_OPTIONS.map((option) => (
+                <SelectItem key={option.seconds} value={String(option.seconds)}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <Separator />
+        <SettingSwitch
+          id="notify"
+          label="Notifications"
+          hint="When a review is requested from you"
+          checked={settings.notify}
+          onChange={(notify) => void updateSettings({ notify })}
+        />
+        <SettingSwitch
+          id="auto-ai"
+          label="AI guide automatically"
+          hint="Write an AI guide when you open a pull request"
+          checked={settings.autoAiGuide}
+          onChange={(autoAiGuide) => void updateSettings({ autoAiGuide })}
+        />
+        <Separator />
+        <Button variant="ghost" size="sm" className="w-full justify-start text-muted-foreground" onClick={onSignOut}>
+          <LogOut /> Sign out
+        </Button>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+function SettingSwitch({
+  id,
+  label,
+  hint,
+  checked,
+  onChange
+}: {
+  id: string
+  label: string
+  hint: string
+  checked: boolean
+  onChange: (checked: boolean) => void
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <div className="space-y-0.5">
+        <Label htmlFor={id} className="text-sm">
+          {label}
+        </Label>
+        <p className="text-xs text-muted-foreground">{hint}</p>
+      </div>
+      <Switch id={id} checked={checked} onCheckedChange={onChange} />
+    </div>
+  )
+}

@@ -2,8 +2,25 @@ import { resolve } from 'node:path'
 import { defineConfig } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import type { Plugin } from 'vite'
 
 const shared = { '@shared': resolve('src/shared') }
+
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'wasm-unsafe-eval'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: https://*.githubusercontent.com",
+  "font-src 'self' data:"
+].join('; ')
+
+// Dev needs Vite's inline react-refresh preamble, so the CSP only ships in builds.
+const cspInBuild: Plugin = {
+  name: 'prot-csp',
+  apply: 'build',
+  transformIndexHtml: (html) =>
+    html.replace('<head>', `<head>\n    <meta http-equiv="Content-Security-Policy" content="${CSP}" />`)
+}
 
 export default defineConfig({
   main: {
@@ -21,6 +38,6 @@ export default defineConfig({
     resolve: {
       alias: { ...shared, '@': resolve('src/renderer/src') }
     },
-    plugins: [react(), tailwindcss()]
+    plugins: [react(), tailwindcss(), cspInBuild]
   }
 })
