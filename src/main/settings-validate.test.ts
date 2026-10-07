@@ -13,6 +13,7 @@ describe('parseStoredSettings', () => {
       theme: 'dark',
       pollSeconds: 5,
       model: 'gpt-4',
+      chatEffort: 'ultra',
       notify: 'yes',
       autoAiGuide: false
     })

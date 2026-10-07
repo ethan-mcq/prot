@@ -171,12 +171,16 @@ export type InboxState = {
 export const AI_MODELS = ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-4-5'] as const
 export type AiModel = (typeof AI_MODELS)[number]
 
+export const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
+export type Effort = (typeof EFFORTS)[number]
+
 export type Theme = 'system' | 'light' | 'dark'
 
 export type Settings = {
   theme: Theme
   pollSeconds: number
   model: AiModel
+  chatEffort: Effort
   notify: boolean
   autoAiGuide: boolean
 }
@@ -184,7 +188,8 @@ export type Settings = {
 export const DEFAULT_SETTINGS: Settings = {
   theme: 'system',
   pollSeconds: 60,
-  model: 'claude-opus-5-5',
+  model: 'claude-sonnet-5-5',
+  chatEffort: 'medium',
   notify: true,
   autoAiGuide: true
 }

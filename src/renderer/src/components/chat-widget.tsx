@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArrowUp, Loader2, Settings as SettingsIcon, Square, TextSelect, X } from 'lucide-react'
-import { AI_MODELS, pullKey, type AiModel, type ChatEvent, type ChatMessage, type ViewContext } from '@shared/types'
+import { AI_MODELS, EFFORTS, pullKey, type AiModel, type ChatEvent, type ChatMessage, type Effort, type ViewContext } from '@shared/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -24,6 +24,20 @@ const MODEL_NAMES: Record<AiModel, string> = {
   'claude-opus-5-5': 'Claude Opus 5.5',
   'claude-sonnet-5-5': 'Claude Sonnet 5.5',
   'claude-haiku-4-5': 'Claude Haiku 4.5'
+}
+
+const EFFORT_NAMES: Record<Effort, string> = {
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+  xhigh: 'Extra high',
+  max: 'Max'
+}
+
+const HAS_EFFORT: Record<AiModel, boolean> = {
+  'claude-opus-5-5': true,
+  'claude-sonnet-5-5': true,
+  'claude-haiku-4-5': false
 }
 
 const STARTERS = ['Explain this chapter', 'What should I look at closely?', 'How does this flow connect?']
@@ -139,7 +153,6 @@ export function ChatWidget() {
         detail={view.pull ? `${view.pull.ref.repo}#${view.pull.ref.number}` : undefined}
         actions={
           <>
-            <ModelName />
             <PaneButton aria-label="Chat settings" aria-pressed={showSetup} onClick={() => setSetup(!setup)} disabled={!keys.anthropic}>
               <SettingsIcon />
             </PaneButton>
@@ -172,9 +185,46 @@ export function ChatWidget() {
   )
 }
 
-function ModelName() {
-  const { settings } = usePrefs()
-  return <span className="mr-1 font-mono text-[10.5px] text-muted-foreground">{settings.model}</span>
+function ModelPicker() {
+  const { settings, updateSettings } = usePrefs()
+  const hasEffort = HAS_EFFORT[settings.model]
+  return (
+    <div className="flex items-center gap-1 pt-1.5 font-mono text-[11px]">
+      <Select value={settings.model} onValueChange={(model) => void updateSettings({ model: model as AiModel })}>
+        <SelectTrigger aria-label="Chat model" size="sm" className="h-6 gap-1 border-0 px-1.5 text-[11px] text-muted-foreground shadow-none hover:text-foreground">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {AI_MODELS.map((model) => (
+            <SelectItem key={model} value={model}>
+              {MODEL_NAMES[model]}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Select
+        value={settings.chatEffort}
+        disabled={!hasEffort}
+        onValueChange={(effort) => void updateSettings({ chatEffort: effort as Effort })}
+      >
+        <SelectTrigger
+          aria-label="Thinking effort"
+          title={hasEffort ? 'How hard Claude thinks before answering' : 'Haiku 4.5 has no effort control'}
+          size="sm"
+          className="h-6 gap-1 border-0 px-1.5 text-[11px] text-muted-foreground shadow-none hover:text-foreground"
+        >
+          {hasEffort ? <SelectValue /> : <span>Effort n/a</span>}
+        </SelectTrigger>
+        <SelectContent>
+          {EFFORTS.map((effort) => (
+            <SelectItem key={effort} value={effort}>
+              {EFFORT_NAMES[effort]}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  )
 }
 
 function Messages({ turns, onStarter, canStart }: { turns: Turn[]; onStarter: (text: string) => void; canStart: boolean }) {
@@ -306,6 +356,7 @@ function Composer({
           </Button>
         )}
       </div>
+      <ModelPicker />
     </div>
   )
 }

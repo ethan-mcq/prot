@@ -39,9 +39,10 @@ export class ChatService {
       const client = await createClient(this.secrets)
       const pull = req.context.pull
       const detail = pull ? await this.pulls.cached(pull.ref) : null
+      const settings = this.settings.get()
       const stream = client.beta.messages.stream(
         {
-          model: this.settings.get().model,
+          model: settings.model,
           max_tokens: CHAT_MAX_TOKENS,
           system: [
             {
@@ -51,7 +52,7 @@ export class ChatService {
             }
           ],
           messages: attachViewContext(req.messages, req.context),
-          ...modelParams(this.settings.get().model, 'medium')
+          ...modelParams(settings.model, settings.chatEffort)
         },
         { signal: controller.signal }
       )

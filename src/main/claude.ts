@@ -1,8 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
-import type { AiModel } from '@shared/types'
+import type { AiModel, Effort } from '@shared/types'
 import type { SecretsStore } from './secrets'
-
-type Effort = 'medium' | 'high'
 
 // Haiku 4.5 predates adaptive thinking, effort and server-side refusal fallback.
 const SUPPORTS_ADAPTIVE: Record<AiModel, boolean> = {

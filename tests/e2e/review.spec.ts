@@ -98,7 +98,7 @@ test('expands into the IDE, browses the whole repo, and submits an approval with
     })
 })
 
-test('chat widget takes an API key, swaps in the AI guide, and answers with the on-screen chapter as context', async () => {
+test('chat widget takes an API key, swaps in the AI guide, and answers with the on-screen chapter and chosen effort', async () => {
   const { page, anthropic } = h
   await signIn()
   await openSharePull()
@@ -116,8 +116,18 @@ test('chat widget takes an API key, swaps in the AI guide, and answers with the 
   await expect(page.getByRole('log', { name: 'Conversation' })).toContainText(CHAT_REPLY)
   await shot('07-chat')
 
-  const chat = anthropic.requests.filter((r) => !JSON.stringify(r.body).includes('json_schema')).at(-1)
-  const sent = JSON.stringify(chat?.body)
+  const chats = () => anthropic.requests.filter((r) => !JSON.stringify(r.body).includes('json_schema'))
+  const first = chats().at(-1)?.body as { model: string; output_config: { effort: string } }
+  const sent = JSON.stringify(first)
   expect(sent).toContain('Stage and upload shared files')
   expect(sent).toContain('Where does sharing start?')
+  expect({ model: first.model, effort: first.output_config.effort }).toEqual({ model: 'claude-sonnet-5-5', effort: 'medium' })
+
+  await page.getByRole('combobox', { name: 'Thinking effort' }).click()
+  await page.getByRole('option', { name: 'High', exact: true }).click()
+  await page.getByRole('textbox', { name: 'Message prot' }).fill('Anything risky?')
+  await page.keyboard.press('Enter')
+  await expect.poll(() => chats().length).toBe(2)
+  const second = chats().at(-1)?.body as { output_config: { effort: string } }
+  expect(second.output_config.effort).toBe('high')
 })
