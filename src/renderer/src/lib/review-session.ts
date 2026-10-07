@@ -1,9 +1,12 @@
-import type { Chapter, DiffLine, DiffSide, DraftComment, Guide, GuideStep, PullDetail } from '@shared/types'
+import { lineAnchor } from '@shared/diff'
+import type { Chapter, DiffLine, DiffLocation, DraftComment, FlowNode, Guide, GuideStep, PullDetail } from '@shared/types'
 import { pullKey } from '@shared/types'
 
 export type TreeMode = 'changed' | 'all'
 
 export type IdeState = { open: false; mode: TreeMode } | { open: true; mode: TreeMode; path: string }
+
+export type Focus = DiffLocation & { nonce: number }
 
 export type AiGuideRequest = { status: 'idle' } | { status: 'loading' } | { status: 'failed'; message: string }
 
@@ -14,6 +17,7 @@ export type ReviewSession = {
   reviewed: string[]
   drafts: DraftComment[]
   ide: IdeState
+  focus: Focus | null
 }
 
 export type ReviewAction =
@@ -30,6 +34,7 @@ export type ReviewAction =
   | { type: 'ide/open'; path: string }
   | { type: 'ide/mode'; mode: TreeMode }
   | { type: 'ide/close' }
+  | { type: 'focus/node'; node: FlowNode; at: DiffLocation | null; ide: boolean }
 
 export function guideSteps(guide: Guide): GuideStep[] {
   const chapters: GuideStep[] = guide.chapters.map((_, index) => ({ kind: 'chapter', index }))
@@ -41,9 +46,10 @@ function clampStep(index: number, guide: Guide): number {
   return Math.min(Math.max(index, 0), last)
 }
 
-export function draftAnchor(line: DiffLine): { side: DiffSide; line: number } | null {
-  if (line.kind === 'del') return line.oldLine === null ? null : { side: 'LEFT', line: line.oldLine }
-  return line.newLine === null ? null : { side: 'RIGHT', line: line.newLine }
+function chapterHolding(guide: Guide, path: string | null, chapterId: string | null): number {
+  const byPath = guide.chapters.findIndex((chapter) => path !== null && chapter.files.includes(path))
+  if (byPath !== -1) return byPath
+  return guide.chapters.findIndex((chapter) => chapter.id === chapterId)
 }
 
 export function chapterReviewKeys(chapter: Chapter): string[] {
@@ -57,9 +63,9 @@ export function isReviewed(session: ReviewSession, keys: string[]): boolean {
 export function reviewReducer(state: ReviewSession, action: ReviewAction): ReviewSession {
   switch (action.type) {
     case 'step/go':
-      return { ...state, step: clampStep(action.index, state.guide) }
+      return { ...state, step: clampStep(action.index, state.guide), focus: null }
     case 'step/move':
-      return { ...state, step: clampStep(state.step + action.delta, state.guide) }
+      return { ...state, step: clampStep(state.step + action.delta, state.guide), focus: null }
     case 'ai/start':
       return { ...state, ai: { status: 'loading' } }
     case 'ai/loaded':
@@ -71,7 +77,7 @@ export function reviewReducer(state: ReviewSession, action: ReviewAction): Revie
       return { ...state, reviewed: action.reviewed ? [...others, ...action.keys] : others }
     }
     case 'draft/add': {
-      const anchor = draftAnchor(action.line)
+      const anchor = lineAnchor(action.line)
       if (!anchor) return state
       const draft: DraftComment = { id: crypto.randomUUID(), path: action.path, ...anchor, body: action.body }
       return { ...state, drafts: [...state.drafts, draft] }
@@ -91,6 +97,16 @@ export function reviewReducer(state: ReviewSession, action: ReviewAction): Revie
       return { ...state, ide: { ...state.ide, mode: action.mode } }
     case 'ide/close':
       return { ...state, ide: { open: false, mode: state.ide.mode } }
+    case 'focus/node': {
+      const focus = action.at === null ? null : { ...action.at, nonce: (state.focus?.nonce ?? 0) + 1 }
+      const path = action.at?.path ?? action.node.file
+      const chapter = chapterHolding(state.guide, path, action.node.chapterId)
+      if (action.ide || chapter === -1) {
+        if (path === null) return state
+        return { ...state, focus, ide: { open: true, mode: state.ide.mode, path } }
+      }
+      return { ...state, focus, step: clampStep(chapter + 2, state.guide) }
+    }
   }
 }
 
@@ -127,6 +143,7 @@ export function initSession({ detail, guide }: { detail: PullDetail; guide: Guid
     step: 0,
     reviewed: stored.reviewed,
     drafts: stored.drafts,
-    ide: { open: false, mode: 'changed' }
+    ide: { open: false, mode: 'changed' },
+    focus: null
   }
 }

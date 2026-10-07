@@ -1,10 +1,11 @@
-import { useLayoutEffect, useRef, useState, type MouseEvent } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { Check, Maximize2, Workflow } from 'lucide-react'
-import type { FlowNode } from '@shared/types'
+import { locateFlowNode } from '@shared/guide'
+import type { FlowEdge, FlowNode } from '@shared/types'
 import { DiffStat } from '@/components/diff-stat'
 import { chapterFiles } from '@/components/chapter-step'
 import { DashedFrame, PaneHeader } from '@/components/pane'
-import { pad2 } from '@/lib/paths'
+import { pad2, splitPath } from '@/lib/paths'
 import { useReview } from '@/lib/review-context'
 import { chapterReviewKeys, isReviewed } from '@/lib/review-session'
 import { cn } from '@/lib/utils'
@@ -26,22 +27,19 @@ export function FlowStep() {
             {flow.caption && <p className="max-w-[720px] font-copy text-[13px] leading-[1.75] text-foreground/85">{flow.caption}</p>}
           </div>
           {flow.nodes.length > 0 ? (
-            <DashedFrame
-              label={
-                <span className="flex flex-wrap items-center justify-between gap-x-6">
-                  <span>{`F L O W   nodes: ${flow.nodes.length}`}</span>
-                  <span className="tracking-normal">
-                    <span className="text-added">+ added</span>
-                    <span className="ml-4 text-modified">~ modified</span>
-                    <span className="ml-4">· existing</span>
-                  </span>
-                </span>
-              }
-            >
-              <div className="px-7 py-9">
-                <Serpentine nodes={flow.nodes} />
-              </div>
-            </DashedFrame>
+            <div className="space-y-3">
+              <DashedFrame label={`F L O W   nodes: ${flow.nodes.length}`}>
+                <div className="px-7 py-9">
+                  <Serpentine nodes={flow.nodes} />
+                </div>
+              </DashedFrame>
+              <p className="text-[11.5px] whitespace-pre-wrap text-muted-foreground">
+                <span className="text-added">+ added</span>
+                {'  '}
+                <span className="text-modified">~ modified</span>
+                {'  · existing   → calls   hover a node to see its links   click to jump to its line'}
+              </p>
+            </div>
           ) : (
             <p className="max-w-[720px] font-copy text-[13px] leading-[1.75] text-muted-foreground">
               This guide has no call flow to draw, usually because the change is configuration, docs or a set of
@@ -60,6 +58,27 @@ const TONE = {
   modified: { pill: 'text-modified', sign: '~' },
   context: { pill: 'text-muted-foreground', sign: '·' }
 } as const
+
+type Links = { calls: Map<string, string[]>; calledBy: Map<string, string[]> }
+
+function linksOf(edges: FlowEdge[]): Links {
+  const calls = new Map<string, string[]>()
+  const calledBy = new Map<string, string[]>()
+  for (const edge of edges) {
+    calls.set(edge.from, [...(calls.get(edge.from) ?? []), edge.to])
+    calledBy.set(edge.to, [...(calledBy.get(edge.to) ?? []), edge.from])
+  }
+  return { calls, calledBy }
+}
+
+type Relation = 'callee' | 'caller' | 'dim' | null
+
+function relationTo(hovered: string | null, node: FlowNode, links: Links): Relation {
+  if (hovered === null || hovered === node.id) return null
+  if (links.calls.get(hovered)?.includes(node.id)) return 'callee'
+  if (links.calledBy.get(hovered)?.includes(node.id)) return 'caller'
+  return 'dim'
+}
 
 function useColumns(count: number) {
   const ref = useRef<HTMLDivElement>(null)
@@ -81,8 +100,10 @@ function useColumns(count: number) {
 function Serpentine({ nodes }: { nodes: FlowNode[] }) {
   const { session } = useReview()
   const { ref, columns } = useColumns(nodes.length)
-  const edges = new Set(session.guide.flow.edges.map((edge) => `${edge.from}>${edge.to}`))
-  const linked = (a: FlowNode, b: FlowNode) => edges.has(`${a.id}>${b.id}`) || edges.has(`${b.id}>${a.id}`)
+  const [hovered, setHovered] = useState<string | null>(null)
+  const links = useMemo(() => linksOf(session.guide.flow.edges), [session.guide.flow.edges])
+  const labels = new Map(nodes.map((node) => [node.id, node.label]))
+  const calls = (from: FlowNode, to: FlowNode) => links.calls.get(from.id)?.includes(to.id) ?? false
 
   const rows: FlowNode[][] = []
   for (let i = 0; i < nodes.length; i += columns) rows.push(nodes.slice(i, i + columns))
@@ -92,22 +113,36 @@ function Serpentine({ nodes }: { nodes: FlowNode[] }) {
     <div ref={ref} role="list" aria-label="Flow">
       {rows.map((row, r) => {
         const reversed = r % 2 === 1
-        const next = rows[r + 1]
+        const next = rows[r + 1]?.[0]
         const last = row[row.length - 1]
         return (
           <div key={r}>
             <div className="grid" style={grid}>
               {row.map((node, i) => {
                 const following = row[i + 1]
+                const forward = following !== undefined && calls(node, following)
+                const backward = following !== undefined && !forward && calls(following, node)
+                const side = reversed ? 'left' : 'right'
                 return (
                   <div
                     key={node.id}
                     role="listitem"
                     className="relative"
                     style={{ gridColumn: reversed ? columns - i : i + 1, gridRow: 1 }}
+                    onMouseEnter={() => setHovered(node.id)}
+                    onMouseLeave={() => setHovered(null)}
+                    onFocus={() => setHovered(node.id)}
+                    onBlur={() => setHovered(null)}
                   >
-                    <FlowPill node={node} />
-                    {following && <Arrow direction={reversed ? 'left' : 'right'} solid={linked(node, following)} />}
+                    <FlowPill
+                      node={node}
+                      relation={relationTo(hovered, node, links)}
+                      calls={(links.calls.get(node.id) ?? []).map((id) => labels.get(id) ?? id)}
+                      calledBy={(links.calledBy.get(node.id) ?? []).map((id) => labels.get(id) ?? id)}
+                    />
+                    {(forward || backward) && (
+                      <Arrow at={side} direction={forward ? side : side === 'left' ? 'right' : 'left'} />
+                    )}
                   </div>
                 )
               })}
@@ -115,7 +150,8 @@ function Serpentine({ nodes }: { nodes: FlowNode[] }) {
             {next && last && (
               <div className="grid h-8" style={grid}>
                 <div className="flex justify-center" style={{ gridColumn: reversed ? 1 : columns }}>
-                  <Arrow direction="down" solid={next[0] ? linked(last, next[0]) : false} />
+                  {calls(last, next) && <Arrow direction="down" />}
+                  {!calls(last, next) && calls(next, last) && <Arrow direction="up" />}
                 </div>
               </div>
             )}
@@ -126,13 +162,15 @@ function Serpentine({ nodes }: { nodes: FlowNode[] }) {
   )
 }
 
-function Arrow({ direction, solid }: { direction: 'left' | 'right' | 'down'; solid: boolean }) {
-  const stroke = { strokeDasharray: solid ? undefined : '3 3' }
-  if (direction === 'down') {
+type Direction = 'left' | 'right' | 'up' | 'down'
+
+function Arrow({ direction, at }: { direction: Direction; at?: 'left' | 'right' }) {
+  if (direction === 'down' || direction === 'up') {
+    const head = direction === 'down' ? 'M1.5 24 L5 29 L8.5 24' : 'M1.5 8 L5 3 L8.5 8'
     return (
       <svg aria-hidden width="10" height="32" className="text-frame">
-        <line x1="5" y1="2" x2="5" y2="27" stroke="currentColor" style={stroke} />
-        <path d="M1.5 24 L5 29 L8.5 24" fill="none" stroke="currentColor" />
+        <line x1="5" y1={direction === 'down' ? 2 : 5} x2="5" y2={direction === 'down' ? 27 : 30} stroke="currentColor" />
+        <path d={head} fill="none" stroke="currentColor" />
       </svg>
     )
   }
@@ -142,9 +180,9 @@ function Arrow({ direction, solid }: { direction: 'left' | 'right' | 'down'; sol
       aria-hidden
       width={GAP_X}
       height="10"
-      className={cn('absolute top-1/2 -translate-y-1/2 text-frame', left ? 'right-full' : 'left-full')}
+      className={cn('absolute top-1/2 -translate-y-1/2 text-frame', at === 'left' ? 'right-full' : 'left-full')}
     >
-      <line x1={left ? 7 : 4} y1="5" x2={left ? GAP_X - 4 : GAP_X - 7} y2="5" stroke="currentColor" style={stroke} />
+      <line x1={left ? 7 : 4} y1="5" x2={left ? GAP_X - 4 : GAP_X - 7} y2="5" stroke="currentColor" />
       <path
         d={left ? 'M8 1.5 L3 5 L8 8.5' : `M${GAP_X - 8} 1.5 L${GAP_X - 3} 5 L${GAP_X - 8} 8.5`}
         fill="none"
@@ -154,43 +192,67 @@ function Arrow({ direction, solid }: { direction: 'left' | 'right' | 'down'; sol
   )
 }
 
-function FlowPill({ node }: { node: FlowNode }) {
-  const { session, dispatch } = useReview()
+function FlowPill({
+  node,
+  relation,
+  calls,
+  calledBy
+}: {
+  node: FlowNode
+  relation: Relation
+  calls: string[]
+  calledBy: string[]
+}) {
+  const { detail, session, dispatch } = useReview()
   const tone = TONE[node.change]
+  const linked = relation === 'callee' || relation === 'caller'
+  const at = useMemo(() => locateFlowNode(node, detail.files), [node, detail.files])
+  const path = at?.path ?? node.file
   const chapterIndex = session.guide.chapters.findIndex((chapter) => chapter.id === node.chapterId)
   const hasChapter = chapterIndex !== -1
+  const clickable = hasChapter || path !== null
 
-  function openFile() {
-    if (node.file) dispatch({ type: 'ide/open', path: node.file })
+  function jump(ide: boolean) {
+    dispatch({ type: 'focus/node', node, at, ide })
   }
 
-  function onClick(event: MouseEvent) {
-    if ((event.metaKey || event.ctrlKey || event.altKey || !hasChapter) && node.file) openFile()
-    else if (hasChapter) dispatch({ type: 'step/go', index: chapterIndex + 2 })
-  }
-
-  const clickable = hasChapter || node.file !== null
-  const hint = [node.file, hasChapter ? `Chapter ${pad2(chapterIndex + 1)}` : null, node.file && hasChapter ? '⌘-click to open the file' : null]
-    .filter(Boolean)
-    .join(' · ')
+  const where = path === null ? null : `${splitPath(path).name}${at ? `:${at.line}` : ''}`
+  const summary = [
+    node.label,
+    where,
+    hasChapter ? `Chapter ${pad2(chapterIndex + 1)}` : null,
+    hasChapter && path !== null ? '⌘-click opens in IDE' : null
+  ]
+  const hint = [summary.filter(Boolean).join(' · ')]
+  if (calls.length > 0) hint.push(`calls ${calls.join(', ')}`)
+  if (calledBy.length > 0) hint.push(`called by ${calledBy.join(', ')}`)
 
   return (
-    <div className="group/pill relative">
+    <div className={cn('group/pill relative transition-opacity', relation === 'dim' && 'opacity-55')}>
       <button
         type="button"
-        onClick={onClick}
+        onClick={(event: MouseEvent) => jump(event.metaKey || event.ctrlKey || event.altKey)}
         disabled={!clickable}
-        title={hint || node.label}
+        title={hint.join('\n')}
         aria-label={node.label}
         className={cn(
-          'flex h-8 w-full items-center gap-2 rounded-[7px] border border-pane-border bg-card px-2.5 text-left font-mono text-[12px] transition-colors disabled:cursor-default',
+          'flex h-8 w-full items-center gap-2 rounded-[7px] border border-pane-border bg-card px-2.5 text-left font-mono text-[12px] transition-[color,background-color,border-color,box-shadow] disabled:cursor-default',
           tone.pill,
-          clickable && 'hover:border-frame hover:bg-accent'
+          clickable && 'hover:border-frame hover:bg-accent',
+          linked && 'ring-1 ring-command/50'
         )}
       >
         <span aria-hidden className="font-semibold">{tone.sign}</span>
         <span className="truncate">{node.label}</span>
       </button>
+      {linked && (
+        <span
+          aria-hidden
+          className="absolute -top-2 left-2 rounded-[4px] bg-card px-1 font-mono text-[9.5px] leading-[14px] text-command"
+        >
+          {relation}
+        </span>
+      )}
       {hasChapter && (
         <button
           type="button"
@@ -201,12 +263,12 @@ function FlowPill({ node }: { node: FlowNode }) {
           {pad2(chapterIndex + 1)}
         </button>
       )}
-      {node.file && (
+      {path !== null && (
         <button
           type="button"
-          aria-label={`Open ${node.file} in IDE`}
+          aria-label={`Open ${path} in IDE`}
           title="Open in IDE"
-          onClick={openFile}
+          onClick={() => jump(true)}
           className="absolute -right-2 -bottom-2 flex size-5 items-center justify-center rounded-[4px] border border-pane-border bg-card text-muted-foreground opacity-0 transition-opacity group-hover/pill:opacity-100 hover:text-foreground focus-visible:opacity-100"
         >
           <Maximize2 className="size-2.5" />

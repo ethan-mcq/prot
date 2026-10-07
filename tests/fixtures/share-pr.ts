@@ -291,6 +291,30 @@ export const pullDetail = {
   head: { ref: 'luffy/share-extension', sha: HEAD_SHA }
 }
 
+const bugbot = { login: 'cursor[bot]', avatar_url: 'https://avatars.githubusercontent.com/in/1210556?v=4' }
+
+const fixInCursorLinks = `<div><a href="https://cursor.com/open?link=abc" target="_blank" rel="noopener noreferrer"><picture><source media="(prefers-color-scheme: dark)" srcset="https://cursor.com/assets/images/fix-in-cursor-dark.png"><source media="(prefers-color-scheme: light)" srcset="https://cursor.com/assets/images/fix-in-cursor-light.png"><img alt="Fix in Cursor" width="115" height="28" src="https://cursor.com/assets/images/fix-in-cursor-dark.png"></picture></a>&nbsp;<a href="https://cursor.com/agents?link=def" target="_blank" rel="noopener noreferrer"><picture><source media="(prefers-color-scheme: dark)" srcset="https://cursor.com/assets/images/fix-in-web-dark.png"><source media="(prefers-color-scheme: light)" srcset="https://cursor.com/assets/images/fix-in-web-light.png"><img alt="Fix in Web" width="99" height="28" src="https://cursor.com/assets/images/fix-in-web-dark.png"></picture></a></div>`
+
+const homopolymerBugbot = `Homopolymer insertions at run edges clear
+High Severity
+
+<!-- DESCRIPTION START -->
+An insertion is an artifact only when both flanking reference bases sit inside a homopolymer, but the check passes when either flank is in the run.
+
+<!-- DESCRIPTION END --> <!-- BUGBOT_BUG_ID: 1ea0bae9-996e-4963-bf00-0f8925f7b16c --> <!-- LOCATIONS START packages/anomaly_interpretation/src/anomaly_interpretation/plasmid/enrichment/distinguishing_difference.py#L65-L73 LOCATIONS END --> ${fixInCursorLinks}
+<sup>Reviewed by Cursor Bugbot for commit 937336e9207d72c9581e50b4dc8845db895d28ca. Configure here.</sup>`
+
+const finalizeBugbot = `Finalize can bypass run failure hold
+High Severity
+<!-- DESCRIPTION START -->
+The new run hold is applied after item finalize in \`SampleMarkComplete\`, and later completions on the same run still finalize. Because the hold can now fire while samples remain in progress, those items can still be packaged and delivered even though the run is held.
+<!-- DESCRIPTION END --> <!-- BUGBOT_BUG_ID: 14a3193f-f954-4ec5-9136-65fb5ee2c7c1 --> <!-- LOCATIONS START website/api/sample.py#L715-L717 website/api/sample.py#L584-L713 LOCATIONS END --> <details> <summary>Additional Locations (1)</summary>
+
+* \`website/api/sample.py#L584-L713\`
+
+</details> ${fixInCursorLinks}
+<sup>Reviewed by [Cursor Bugbot](https://cursor.com/bugbot) for commit bdf0898950f1ea67b4b53bce93b569577990b65e. Configure [here](https://www.cursor.com/dashboard/bugbot).</sup>`
+
 export const reviewComments = [
   {
     id: 9001,
@@ -302,6 +326,28 @@ export const reviewComments = [
     created_at: '2026-10-06T08:00:00Z',
     in_reply_to_id: null,
     html_url: `https://github.com/${OWNER}/${REPO}/pull/${NUMBER}#discussion_r9001`
+  },
+  {
+    id: 9002,
+    path: 'packages/mobile/src/share/send.ts',
+    line: 4,
+    side: 'RIGHT',
+    body: homopolymerBugbot,
+    user: bugbot,
+    created_at: '2026-10-06T08:05:00Z',
+    in_reply_to_id: null,
+    html_url: `https://github.com/${OWNER}/${REPO}/pull/${NUMBER}#discussion_r9002`
+  },
+  {
+    id: 9003,
+    path: 'packages/mobile/src/share/send.ts',
+    line: 7,
+    side: 'RIGHT',
+    body: finalizeBugbot,
+    user: bugbot,
+    created_at: '2026-10-06T08:06:00Z',
+    in_reply_to_id: null,
+    html_url: `https://github.com/${OWNER}/${REPO}/pull/${NUMBER}#discussion_r9003`
   }
 ]
 

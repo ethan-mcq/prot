@@ -52,8 +52,14 @@ test('signs in, badges the dock, and walks the guide from overview through flow 
 
   await takeShare.click()
   await expect(page.getByRole('tab', { name: /Capy share module/ })).toHaveAttribute('aria-selected', 'true')
-  await expect(page.getByRole('region', { name: /CapyShareModule\.kt/ })).toBeVisible()
-  await shot('04-chapter')
+  const moduleKt = page.getByRole('region', {
+    name: 'packages/mobile/modules/capy-share/android/src/main/java/ai/capy/share/CapyShareModule.kt'
+  })
+  await expect(moduleKt).toBeVisible()
+  const focused = moduleKt.locator('[aria-current="true"]')
+  await expect(focused).toContainText('fun takeShare(')
+  await expect(focused).toBeInViewport()
+  await shot('04-chapter-focused-row')
 
   await page.getByRole('button', { name: 'Next' }).click()
   await expect(page.getByRole('tab', { name: /With share extension/ })).toHaveAttribute('aria-selected', 'true')
@@ -67,6 +73,20 @@ test('expands into the IDE, browses the whole repo, and submits an approval with
 
   const send = page.getByRole('region', { name: 'packages/mobile/src/share/send.ts' })
   await expect(send).toContainText('Should uploads run in parallel?')
+  await expect(send.getByRole('link', { name: 'Fix in Cursor' })).toHaveCount(2)
+  await expect(send).toContainText('Finalize can bypass run failure hold')
+  await expect(send).toContainText('SampleMarkComplete')
+  await expect(send.getByRole('link', { name: 'Cursor Bugbot' })).toBeVisible()
+  await send.locator('summary', { hasText: 'Additional Locations (1)' }).click()
+  await expect(send.getByText('website/api/sample.py#L584-L713')).toBeVisible()
+  for (const raw of ['BUGBOT_BUG_ID', '<div>', '<!--', '[Cursor Bugbot](', '<details>']) {
+    await expect(send).not.toContainText(raw)
+  }
+  await expect(send.locator('p', { hasText: 'Homopolymer insertions' }).locator('br')).toHaveCount(1)
+  await send.getByText('Homopolymer insertions at run edges clear').scrollIntoViewIfNeeded()
+  await shot('05a-bugbot-homopolymer')
+  await send.getByText('Finalize can bypass run failure hold').scrollIntoViewIfNeeded()
+  await shot('05b-bugbot-finalize')
   await send.getByRole('button', { name: 'Comment on line 6' }).click()
   await page.getByRole('textbox').last().fill('Parallel would be faster here.')
   await page.getByRole('button', { name: 'Add comment' }).click()

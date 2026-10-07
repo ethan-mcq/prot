@@ -1,8 +1,8 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode, type Ref } from 'react'
 import { Loader2, Pencil, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { ChangedFile, DiffHunk, DiffLine, DraftComment, ReviewComment } from '@shared/types'
-import { parsePatch } from '@shared/diff'
+import { lineAnchor, parsePatch } from '@shared/diff'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Markdown } from '@/components/markdown'
@@ -12,7 +12,6 @@ import { languageFor } from '@/lib/highlight'
 import { useHighlighted } from '@/lib/hooks'
 import { fileLines, relativeTime } from '@/lib/paths'
 import { useReview } from '@/lib/review-context'
-import { draftAnchor } from '@/lib/review-session'
 import { cn, errorMessage } from '@/lib/utils'
 
 type Gap = { id: string; from: number; to: number | null; oldMinusNew: number }
@@ -80,6 +79,18 @@ export function DiffView({ file }: { file: ChangedFile }) {
   const [expanded, setExpanded] = useState<string[]>([])
   const contentTokens = useHighlighted(expanded.length > 0 && content ? content : [], lang)
   const [composerAt, setComposerAt] = useState<string | null>(null)
+
+  const focus = session.focus?.path === file.path ? session.focus : null
+  const focusRow = useRef<HTMLDivElement>(null)
+  const scrolledNonce = useRef<number | null>(null)
+  // Shiki swaps plain text for tokens after mount, so scroll once it has settled or the row jumps.
+  const settled =
+    lang === null || ((newSide.length === 0 || newTokens !== null) && (oldSide.length === 0 || oldTokens !== null))
+  useEffect(() => {
+    if (focus === null || !settled || scrolledNonce.current === focus.nonce) return
+    scrolledNonce.current = focus.nonce
+    focusRow.current?.scrollIntoView({ block: 'center' })
+  }, [focus, settled])
 
   const comments = useMemo(() => {
     const byLine = new Map<string, ReviewComment[]>()
@@ -163,7 +174,8 @@ export function DiffView({ file }: { file: ChangedFile }) {
             />
           )
         }
-        const anchor = draftAnchor(row.line)
+        const anchor = lineAnchor(row.line)
+        const focused = focus !== null && anchor !== null && anchor.side === focus.side && anchor.line === focus.line
         const key = anchor ? threadKey(file.path, anchor.side, anchor.line) : null
         const thread = key ? comments.byLine.get(key) : undefined
         const lineDrafts = anchor
@@ -172,6 +184,8 @@ export function DiffView({ file }: { file: ChangedFile }) {
         return (
           <div key={row.key}>
             <LineRow
+              ref={focused ? focusRow : undefined}
+              focused={focused}
               line={row.line}
               tokens={tokensFor(row)}
               onComment={anchor ? () => setComposerAt(row.key) : undefined}
@@ -209,11 +223,32 @@ const ROW_TONE = {
   context: { row: '', gutter: '', marker: 'text-muted-foreground', sign: ' ' }
 } as const
 
-function LineRow({ line, tokens, onComment }: { line: DiffLine; tokens: Token[] | undefined; onComment?: () => void }) {
+function LineRow({
+  ref,
+  focused = false,
+  line,
+  tokens,
+  onComment
+}: {
+  ref?: Ref<HTMLDivElement>
+  focused?: boolean
+  line: DiffLine
+  tokens: Token[] | undefined
+  onComment?: () => void
+}) {
   const tone = ROW_TONE[line.kind]
   const label = line.kind === 'del' ? `Comment on removed line ${line.oldLine}` : `Comment on line ${line.newLine}`
   return (
-    <div className={cn('group/row relative flex min-w-0', tone.row)} data-new-line={line.newLine ?? undefined}>
+    <div
+      ref={ref}
+      aria-current={focused ? 'true' : undefined}
+      className={cn(
+        'group/row relative flex min-w-0',
+        tone.row,
+        focused && 'bg-command/12 ring-1 ring-command/55 ring-inset dark:bg-command/15'
+      )}
+      data-new-line={line.newLine ?? undefined}
+    >
       {tone.gutter && <span aria-hidden className={cn('absolute inset-y-0 left-0 w-[4px]', tone.gutter)} />}
       <span className="w-10 shrink-0 pr-2 text-right text-muted-foreground/55 select-none tabular-nums">
         {line.oldLine ?? ''}
@@ -281,7 +316,7 @@ function CommentThread({ comments }: { comments: ReviewComment[] }) {
                 <span className="font-medium">{comment.author.login}</span>
                 <span className="text-muted-foreground">{relativeTime(comment.createdAt)}</span>
               </div>
-              <Markdown className="text-[13px] leading-5">{comment.body}</Markdown>
+              <Markdown github className="text-[13px] leading-5">{comment.body}</Markdown>
             </div>
           </div>
         ))}
@@ -324,7 +359,7 @@ function DraftCard({ draft }: { draft: DraftComment }) {
             <Trash2 />
           </Button>
         </div>
-        <Markdown className="text-[13px] leading-5">{draft.body}</Markdown>
+        <Markdown github className="text-[13px] leading-5">{draft.body}</Markdown>
       </div>
     </div>
   )

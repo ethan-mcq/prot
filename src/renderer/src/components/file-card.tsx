@@ -21,7 +21,7 @@ const STATUS_TAG: Record<ChangedFile['status'], { label: string; className: stri
 export function FileCard({ file }: { file: ChangedFile }) {
   const { session, dispatch } = useReview()
   const reviewed = isReviewed(session, [file.path])
-  const [open, setOpen] = useState(!reviewed)
+  const [open, setOpen] = useState(!reviewed || session.focus?.path === file.path)
   const { name, dir } = splitPath(file.path)
   const tag = STATUS_TAG[file.status]
 

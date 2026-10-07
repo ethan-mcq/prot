@@ -58,7 +58,7 @@ export function OverviewStep() {
             <section className="space-y-2">
               <h3 className="font-semibold">Description</h3>
               {detail.body.trim() ? (
-                <Markdown className="font-copy text-[13px] leading-[1.75] text-foreground/85">{detail.body}</Markdown>
+                <Markdown github className="font-copy text-[13px] leading-[1.75] text-foreground/85">{detail.body}</Markdown>
               ) : (
                 <p className="text-muted-foreground">No description provided.</p>
               )}

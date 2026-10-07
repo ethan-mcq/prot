@@ -1,4 +1,4 @@
-import type { DiffHunk, DiffLine } from './types'
+import type { DiffHunk, DiffLine, DiffSide } from './types'
 
 const HUNK_HEADER = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@ ?(.*)$/
 
@@ -61,4 +61,9 @@ export function parsePatch(patch: string): DiffHunk[] {
   }
 
   return hunks
+}
+
+export function lineAnchor(line: DiffLine): { side: DiffSide; line: number } | null {
+  if (line.kind === 'del') return line.oldLine === null ? null : { side: 'LEFT', line: line.oldLine }
+  return line.newLine === null ? null : { side: 'RIGHT', line: line.newLine }
 }

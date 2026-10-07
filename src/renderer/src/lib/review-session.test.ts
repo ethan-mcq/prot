@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Chapter, DiffLine, Guide } from '@shared/types'
+import type { Chapter, DiffLine, FlowNode, Guide } from '@shared/types'
 import { reviewReducer, type ReviewSession } from './review-session'
 
 function guideWith(chapterCount: number): Guide {
@@ -25,7 +25,8 @@ function session(chapterCount: number, step = 0): ReviewSession {
     step,
     reviewed: [],
     drafts: [],
-    ide: { open: false, mode: 'changed' }
+    ide: { open: false, mode: 'changed' },
+    focus: null
   }
 }
 
@@ -56,5 +57,31 @@ describe('draft comments', () => {
     ])
     expect(add({ kind: 'add', oldLine: null, newLine: 52, text: 'x' })).toMatchObject([{ side: 'RIGHT', line: 52 }])
     expect(add({ kind: 'context', oldLine: 38, newLine: 50, text: 'x' })).toMatchObject([{ side: 'RIGHT', line: 50 }])
+  })
+})
+
+describe('jumping to a flow node', () => {
+  const node: FlowNode = { id: 'n', label: 'takeShare()', file: 'app/Share.kt', change: 'added', chapterId: null }
+  const at = { path: 'app/Share.kt', line: 5, side: 'RIGHT' as const }
+  const guide = guideWith(2)
+  guide.chapters[1] = { id: 'c1', title: 'Share', summary: '', files: ['app/Share.kt'] }
+
+  it('lands on the chapter holding the line, re-clicks re-focus, and leaving the step clears it', () => {
+    const start = { ...session(2, 1), guide }
+    const first = reviewReducer(start, { type: 'focus/node', node, at, ide: false })
+    expect({ step: first.step, focus: first.focus, ide: first.ide.open }).toEqual({
+      step: 3,
+      focus: { path: 'app/Share.kt', line: 5, side: 'RIGHT', nonce: 1 },
+      ide: false
+    })
+    expect(reviewReducer(first, { type: 'focus/node', node, at, ide: false }).focus?.nonce).toBe(2)
+    expect(reviewReducer(first, { type: 'step/move', delta: -1 }).focus).toBe(null)
+
+    const outside = reviewReducer(start, { type: 'focus/node', node: { ...node, file: 'lib/Other.kt' }, at: null, ide: false })
+    expect({ step: outside.step, ide: outside.ide, focus: outside.focus }).toEqual({
+      step: 1,
+      ide: { open: true, mode: 'changed', path: 'lib/Other.kt' },
+      focus: null
+    })
   })
 })

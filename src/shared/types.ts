@@ -34,6 +34,8 @@ export type ChangedFile = {
 
 export type DiffSide = 'LEFT' | 'RIGHT'
 
+export type DiffLocation = { path: string; line: number; side: DiffSide }
+
 export type ReviewComment = {
   id: number
   path: string

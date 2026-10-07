@@ -14,7 +14,8 @@ export type Decl = {
 
 type DeclPattern = { kind: SymbolKind; regex: RegExp }
 
-type Language = { family: string; extensions: string[]; patterns: DeclPattern[] }
+// bindings are declarations a flow node can land on but that the flow never draws as nodes.
+type Language = { family: string; extensions: string[]; patterns: DeclPattern[]; bindings: RegExp[] }
 
 const LANGUAGES: Language[] = [
   {
@@ -35,7 +36,8 @@ const LANGUAGES: Language[] = [
         regex:
           /^(?:(?:public|private|protected|static|async|override|readonly|get|set)\s+)*([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*(?::\s*[^{=]+)?\{\s*$/
       }
-    ]
+    ],
+    bindings: [/^(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*[:=]/]
   },
   {
     family: 'jvm',
@@ -48,7 +50,8 @@ const LANGUAGES: Language[] = [
         regex:
           /^(?:(?:public|private|protected|static|final|abstract|synchronized|native|default)\s+)+[\w<>[\],.? ]+\s+([A-Za-z_]\w*)\s*\(/
       }
-    ]
+    ],
+    bindings: [/^(?:(?:private|public|protected|internal|override|const|lateinit)\s+)*(?:val|var)\s+([A-Za-z_]\w*)/]
   },
   {
     family: 'swift',
@@ -56,7 +59,8 @@ const LANGUAGES: Language[] = [
     patterns: [
       { kind: 'callable', regex: /\bfunc\s+([A-Za-z_]\w*)/ },
       { kind: 'type', regex: /\b(?:class|struct|enum|protocol|actor)\s+([A-Za-z_]\w*)/ }
-    ]
+    ],
+    bindings: []
   },
   {
     family: 'py',
@@ -64,7 +68,8 @@ const LANGUAGES: Language[] = [
     patterns: [
       { kind: 'callable', regex: /^(?:async\s+)?def\s+([A-Za-z_]\w*)/ },
       { kind: 'type', regex: /^class\s+([A-Za-z_]\w*)/ }
-    ]
+    ],
+    bindings: []
   },
   {
     family: 'go',
@@ -72,7 +77,8 @@ const LANGUAGES: Language[] = [
     patterns: [
       { kind: 'callable', regex: /^func\s+(?:\([^)]*\)\s*)?([A-Za-z_]\w*)/ },
       { kind: 'type', regex: /^type\s+([A-Za-z_]\w*)\s+(?:struct|interface)\b/ }
-    ]
+    ],
+    bindings: []
   },
   {
     family: 'rust',
@@ -83,7 +89,8 @@ const LANGUAGES: Language[] = [
         regex: /^(?:pub(?:\([^)]*\))?\s+)?(?:(?:async|const|unsafe|extern(?:\s+"[^"]*")?)\s+)*fn\s+([A-Za-z_]\w*)/
       },
       { kind: 'type', regex: /^(?:pub(?:\([^)]*\))?\s+)?(?:struct|enum|trait)\s+([A-Za-z_]\w*)/ }
-    ]
+    ],
+    bindings: [/^impl(?:<[^>]*>)?\s+(?:[\w:<>]+\s+for\s+)?([A-Za-z_]\w*)/]
   }
 ]
 
@@ -126,6 +133,17 @@ function matchDecl(language: Language, text: string): { name: string; kind: Symb
     if (name !== undefined && !NOT_SYMBOLS.has(name)) return { name, kind: pattern.kind }
   }
   return null
+}
+
+export function declares(path: string, text: string, name: string): boolean {
+  const language = languageOf(path)
+  if (language === null) return false
+  if (matchDecl(language, text)?.name === name) return true
+  const line = text.trim()
+  for (const binding of language.bindings) {
+    if (binding.exec(line)?.[1] === name) return true
+  }
+  return false
 }
 
 const STRING_LITERAL = /(["'`])(?:\\.|(?!\1)[^\\])*\1/g
