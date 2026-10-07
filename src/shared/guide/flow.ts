@@ -46,8 +46,6 @@ function byOrder(a: Node, b: Node): number {
   return a.order - b.order
 }
 
-// Depth-first from nodes in reading order; an edge back into the active path
-// would close a cycle, and the layout reads top to bottom, so it is dropped.
 function acyclic(nodes: Node[], edges: Map<Node, Node[]>): Map<Node, Node[]> {
   const state = new Map<Node, 'active' | 'done'>()
   const dag = new Map<Node, Node[]>()
@@ -137,7 +135,6 @@ function selectNodes(nodes: Node[], dag: Map<Node, Node[]>, mainPath: Node[]): S
   return selected
 }
 
-// Kahn's algorithm; among ready nodes the main path goes first, then reading order.
 function topological(selected: Set<Node>, dag: Map<Node, Node[]>, mainPath: Node[]): Node[] {
   const priority = (node: Node): number => (mainPath.includes(node) ? 0 : 1)
   const indegree = new Map<Node, number>()
@@ -172,7 +169,6 @@ function caption(entry: string | undefined): string {
   return `How the new code connects, starting from ${entry}`
 }
 
-// `files` must be in chapter order: it decides which symbol reads first.
 export function buildFlow(files: ReviewFile[], decls: Map<string, Decl[]>, chapterOf: Map<string, string>): Flow {
   const changed: Node[] = []
   const existing: Node[] = []

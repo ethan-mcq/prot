@@ -64,7 +64,6 @@ export class AuthService {
     return this.setState(signedOut(null))
   }
 
-  // The poller calls this when GitHub answers 401 for a session we thought was valid.
   async expire(): Promise<void> {
     await this.secrets.update(NO_GITHUB_SECRETS)
     this.session = null

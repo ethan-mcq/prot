@@ -64,7 +64,6 @@ export const KOTLIN_MODULE = `${MOBILE}/modules/capy-share/android/src/main/java
 export const SWIFT_MODULE = `${MOBILE}/modules/capy-share/ios/CapyShareModule.swift`
 export const MAIN_ACTIVITY = `${MOBILE}/android/app/src/main/java/com/capy/app/MainActivity.kt`
 
-// Modeled on the Capy share-extension PR, in GitHub's alphabetical file order.
 export const capySharePull: PullDetail = pullWith(
   [
     changed(

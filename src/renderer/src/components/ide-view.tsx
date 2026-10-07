@@ -36,13 +36,12 @@ function buildTree(paths: string[]): TreeEntry[] {
       dir = child
     })
   }
-  return compact(root).children
+  return mergeSingleChildDirs(root).children
 }
 
-// Single-child folder chains collapse into one row ("src/main/kotlin"), like VS Code.
-function compact(dir: TreeDir): TreeDir {
+function mergeSingleChildDirs(dir: TreeDir): TreeDir {
   const children = dir.children
-    .map((entry) => (entry.kind === 'dir' ? compact(entry) : entry))
+    .map((entry) => (entry.kind === 'dir' ? mergeSingleChildDirs(entry) : entry))
     .sort((a, b) => (a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === 'dir' ? -1 : 1))
   const only = children[0]
   if (dir.path !== '' && children.length === 1 && only?.kind === 'dir') {
@@ -298,8 +297,6 @@ function Breadcrumb({ path }: { path: string }) {
   )
 }
 
-// Coarse visible-range tracking for the chat context: binary search the rendered
-// rows by their position instead of observing every row.
 function useVisibleLines(path: string, patch: string | null) {
   const ref = useRef<HTMLDivElement>(null)
   const { updateView } = useViewStore()

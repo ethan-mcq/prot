@@ -114,7 +114,6 @@ describe('buildHeuristicGuide', () => {
     expect(overview.summary).toBe(
       'Adds a share extension so people can share text from any app straight into a Capy thread. Android delivers the share through MainActivity, iOS through an app group.'
     )
-    // One point per chapter, in chapter order; the titles themselves are pinned above.
     expect(overview.points).toHaveLength(8)
     expect(overview.points[0]).toBe('Capy share module in modules/capy-share (2 files)')
     expect(overview.points[7]).toBe('Lockfiles (1 file)')

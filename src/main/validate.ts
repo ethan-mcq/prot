@@ -51,22 +51,21 @@ function oneOf<T extends string>(value: unknown, options: readonly T[], what: st
   return match
 }
 
-// Owner and repo end up in filenames and URL paths, so keep them to GitHub's own alphabet.
-const NAME = /^[A-Za-z0-9._-]+$/
+const PATH_SAFE = /^[A-Za-z0-9._-]+$/
 
 export function parsePullRef(raw: unknown): PullRef {
   const value = obj(raw, 'Pull request reference')
   const owner = str(value.owner, 'owner')
   const repo = str(value.repo, 'repo')
   const number = int(value.number, 'number')
-  if (!NAME.test(owner) || !NAME.test(repo)) throw new Error('Invalid owner or repo name')
+  if (!PATH_SAFE.test(owner) || !PATH_SAFE.test(repo)) throw new Error('Invalid owner or repo name')
   if (number < 1) throw new Error('Pull request number must be positive')
   return { owner, repo, number }
 }
 
 export function parseSha(raw: unknown): string {
   const sha = str(raw, 'sha')
-  if (!NAME.test(sha)) throw new Error('Invalid commit sha')
+  if (!PATH_SAFE.test(sha)) throw new Error('Invalid commit sha')
   return sha
 }
 
@@ -87,6 +86,7 @@ function parseDraftComment(raw: unknown): DraftComment {
 export function parseReviewInput(raw: unknown): ReviewInput {
   const value = obj(raw, 'Review')
   return {
+    commitId: parseSha(value.commitId),
     event: oneOf(value.event, REVIEW_EVENTS, 'Review event'),
     body: str(value.body, 'Review body'),
     comments: list(value.comments, 'Review comments').map(parseDraftComment)

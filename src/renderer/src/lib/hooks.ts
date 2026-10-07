@@ -9,7 +9,6 @@ function isTyping(target: EventTarget | null): boolean {
   return ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)
 }
 
-// Shortcuts stay out of the way of text entry, open dialogs and the chat panel.
 export function useHotkeys(handlers: Record<string, KeyHandler>, enabled = true): void {
   const latest = useRef(handlers)
   latest.current = handlers

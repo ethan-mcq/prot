@@ -8,9 +8,6 @@ type RoleRule = {
   patterns?: RegExp[]
 }
 
-// First match wins, so the order encodes precedence: a lockfile is JSON but
-// is deps, a snapshot sits next to tests but is generated, package.json is
-// build rather than config.
 const RULES: RoleRule[] = [
   {
     role: 'deps',

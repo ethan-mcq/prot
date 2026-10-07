@@ -19,7 +19,6 @@ export class ChatService {
     private readonly emit: (channel: string, event: ChatEvent) => void
   ) {}
 
-  // Returns once the request is accepted. Everything after that is reported as events.
   start(req: ChatRequest): void {
     if (this.active.has(req.id)) throw new Error(`Chat request ${req.id} is already running`)
     const controller = new AbortController()

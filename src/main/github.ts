@@ -114,9 +114,9 @@ export class GitHubClient {
     return paths
   }
 
-  async submitReview(ref: PullRef, headSha: string, input: ReviewInput): Promise<void> {
+  async submitReview(ref: PullRef, input: ReviewInput): Promise<void> {
     const body: Record<string, unknown> = {
-      commit_id: headSha,
+      commit_id: input.commitId,
       event: input.event,
       comments: input.comments.map((comment) => ({
         path: comment.path,
@@ -125,8 +125,7 @@ export class GitHubClient {
         body: comment.body
       }))
     }
-    // GitHub rejects REQUEST_CHANGES and COMMENT without a body, and that message is more useful than ours.
-    if (input.body !== '' || input.event !== 'APPROVE') body.body = input.body
+    if (input.body.trim() !== '') body.body = input.body
     await this.request(`${repoPath(ref)}/pulls/${ref.number}/reviews`, { method: 'POST', body })
   }
 

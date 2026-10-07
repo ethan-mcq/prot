@@ -49,7 +49,6 @@ function boot(): void {
   })
 }
 
-// macOS convention: closing the window leaves the app and its poller running.
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })

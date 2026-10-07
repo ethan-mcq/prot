@@ -15,8 +15,7 @@ import { useReview } from '@/lib/review-context'
 import { draftAnchor } from '@/lib/review-session'
 import { cn, errorMessage } from '@/lib/utils'
 
-// `offset` is old line minus new line inside a run of unchanged lines.
-type Gap = { id: string; from: number; to: number | null; offset: number; section: string | null }
+type Gap = { id: string; from: number; to: number | null; oldMinusNew: number; section: string | null }
 
 type Row =
   | { kind: 'line'; key: string; line: DiffLine; tokenSide: 'old' | 'new'; tokenIndex: number }
@@ -27,7 +26,7 @@ function buildRows(hunks: DiffHunk[], trailingGap: boolean): { rows: Row[]; oldS
   const oldSide: string[] = []
   const newSide: string[] = []
   let nextNew = 1
-  let offset = 0
+  let oldMinusNew = 0
   hunks.forEach((hunk, h) => {
     // A zero-length side in a hunk header names the line *before* the change.
     const newStart = hunk.newLines === 0 ? hunk.newStart + 1 : hunk.newStart
@@ -35,7 +34,7 @@ function buildRows(hunks: DiffHunk[], trailingGap: boolean): { rows: Row[]; oldS
     if (newStart > nextNew) {
       rows.push({
         kind: 'gap',
-        gap: { id: `gap-${h}`, from: nextNew, to: newStart - 1, offset: oldStart - newStart, section: hunk.section }
+        gap: { id: `gap-${h}`, from: nextNew, to: newStart - 1, oldMinusNew: oldStart - newStart, section: hunk.section }
       })
     }
     hunk.lines.forEach((line, i) => {
@@ -50,10 +49,10 @@ function buildRows(hunks: DiffHunk[], trailingGap: boolean): { rows: Row[]; oldS
       }
     })
     nextNew = newStart + hunk.newLines
-    offset = oldStart + hunk.oldLines - nextNew
+    oldMinusNew = oldStart + hunk.oldLines - nextNew
   })
   if (trailingGap && hunks.length > 0) {
-    rows.push({ kind: 'gap', gap: { id: 'gap-end', from: nextNew, to: null, offset, section: null } })
+    rows.push({ kind: 'gap', gap: { id: 'gap-end', from: nextNew, to: null, oldMinusNew, section: null } })
   }
   return { rows, oldSide, newSide }
 }
@@ -139,7 +138,7 @@ export function DiffView({ file }: { file: ChangedFile }) {
           if (expanded.includes(gap.id) && content) {
             const lines: ReactNode[] = []
             for (let n = gap.from; n <= (to ?? content.length); n++) {
-              const line: DiffLine = { kind: 'context', oldLine: n + gap.offset, newLine: n, text: content[n - 1] ?? '' }
+              const line: DiffLine = { kind: 'context', oldLine: n + gap.oldMinusNew, newLine: n, text: content[n - 1] ?? '' }
               lines.push(<LineRow key={`${gap.id}-${n}`} line={line} tokens={contentTokens?.[n - 1]} />)
             }
             return lines

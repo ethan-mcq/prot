@@ -102,7 +102,6 @@ export function toPullSummary(item: RawSearchItem, bucket: PullBucket): PullSumm
   }
 }
 
-// A PR you authored and were also asked to review stays in `review`.
 export function mergeBuckets(review: PullSummary[], mine: PullSummary[]): PullSummary[] {
   const seen = new Set<string>()
   const merged: PullSummary[] = []

@@ -46,7 +46,6 @@ export function draftAnchor(line: DiffLine): { side: DiffSide; line: number } | 
   return line.newLine === null ? null : { side: 'RIGHT', line: line.newLine }
 }
 
-// A chapter with no files still needs something to tick, so it falls back to its own key.
 export function chapterReviewKeys(chapter: Chapter): string[] {
   return chapter.files.length > 0 ? chapter.files : [`chapter:${chapter.id}`]
 }
@@ -117,7 +116,6 @@ export function saveSession(key: string, session: ReviewSession): void {
   try {
     localStorage.setItem(key, JSON.stringify(stored))
   } catch {
-    // Storage full or unavailable: the session still works for this visit.
   }
 }
 

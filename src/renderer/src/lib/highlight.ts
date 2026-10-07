@@ -99,8 +99,6 @@ async function loadLanguage(core: HighlighterCore, lang: string): Promise<void> 
 
 const MAX_LINE = 2000
 
-// Lines are tokenized as one block so multi-line constructs (block comments,
-// template strings) keep their grammar state across the rows we render.
 export async function highlightLines(lines: string[], lang: string): Promise<Token[][]> {
   const core = await getHighlighter()
   await loadLanguage(core, lang)

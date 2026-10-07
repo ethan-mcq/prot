@@ -6,7 +6,6 @@ import type { AuthSource, GitHubUser } from '@shared/types'
 export type Secrets = {
   githubToken: string | null
   githubSource: AuthSource | null
-  // Cached so a restart while offline can stay signed in.
   githubUser: GitHubUser | null
   anthropicKey: string | null
 }
@@ -67,7 +66,6 @@ export class SecretsStore {
     return process.env.ANTHROPIC_API_KEY?.trim() || null
   }
 
-  // Either a stored key or the environment variable counts as "set".
   async hasAnthropicKey(): Promise<boolean> {
     return (await this.anthropicKey()) !== null
   }

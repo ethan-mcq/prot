@@ -11,7 +11,6 @@ function clampPollSeconds(value: number): number {
 
 type FieldParsers = { [K in keyof Settings]: (value: unknown) => Settings[K] | undefined }
 
-// Each parser returns undefined for a value of the wrong type.
 const FIELDS: FieldParsers = {
   theme: (value) => THEMES.find((theme) => theme === value),
   pollSeconds: (value) =>
@@ -25,7 +24,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-// Reading a file that may be corrupt or from another version: fall back per field.
 export function parseStoredSettings(raw: unknown): Settings {
   const settings: Settings = { ...DEFAULT_SETTINGS }
   if (!isRecord(raw)) return settings
@@ -37,7 +35,6 @@ export function parseStoredSettings(raw: unknown): Settings {
   return settings
 }
 
-// A patch comes from the renderer, so a bad key or type is a bug to report, not to paper over.
 export function parseSettingsPatch(raw: unknown): Partial<Settings> {
   if (!isRecord(raw)) throw new Error('Settings patch must be an object')
   const patch: Record<string, unknown> = {}

@@ -17,7 +17,6 @@ export class InboxPoller {
   private timer: NodeJS.Timeout | null = null
   private inFlight: Promise<InboxState> | null = null
   private lastAttemptAt = 0
-  // Null until the first successful poll, so launch never notifies for the existing backlog.
   private previous: PullSummary[] | null = null
   private readonly notifications = new Set<Notification>()
 

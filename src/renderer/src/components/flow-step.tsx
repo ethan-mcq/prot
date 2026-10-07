@@ -77,8 +77,6 @@ function useColumns(count: number) {
   return { ref, columns }
 }
 
-// Rows alternate direction so the path reads like a snake: left to right,
-// drop down on the right edge, right to left, drop down on the left edge.
 function Serpentine({ nodes }: { nodes: FlowNode[] }) {
   const { session } = useReview()
   const { ref, columns } = useColumns(nodes.length)

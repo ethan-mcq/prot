@@ -46,7 +46,6 @@ describe('parseAiGuide', () => {
     ])
     expect(guide.chapters[0]?.summary).toBe('Kotlin and Swift sides.')
 
-    // Files the AI left out get heuristic chapters after its own; guide.test.ts owns how those read.
     const covered = [KOTLIN_MODULE, SWIFT_MODULE, MAIN_ACTIVITY]
     const leftovers: string[] = []
     for (const file of capySharePull.files) {

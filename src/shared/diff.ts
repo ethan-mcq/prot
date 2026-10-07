@@ -36,8 +36,6 @@ export function parsePatch(patch: string): DiffHunk[] {
       continue
     }
 
-    // Counts tell us where a hunk ends, so a trailing empty string from the
-    // final newline is never mistaken for a blank context line.
     if (hunk === null || (oldLeft <= 0 && newLeft <= 0)) continue
     if (raw.startsWith('\\')) continue
 

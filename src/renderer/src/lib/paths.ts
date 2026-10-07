@@ -22,7 +22,6 @@ export function relativeTime(iso: string, now = Date.now()): string {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
-// A trailing newline ends the last line rather than starting an empty one.
 export function fileLines(text: string): string[] {
   const lines = text.split('\n')
   if (lines.length > 1 && lines[lines.length - 1] === '') lines.pop()

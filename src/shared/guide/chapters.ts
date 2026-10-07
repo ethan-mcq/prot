@@ -38,8 +38,6 @@ const STATUS_WORD: Record<FileStatus, string> = {
   renamed: 'renamed'
 }
 
-// Directories that only hold other areas, so the area is one level deeper:
-// packages/mobile, modules/capy-share, src/share.
 const CONTAINER_DIRS = new Set([
   'packages',
   'apps',
@@ -99,7 +97,6 @@ function bucketByArea(files: ReviewFile[]): { area: string[]; files: ReviewFile[
   return [...buckets.values()]
 }
 
-// Every split partitions its input, so no file is dropped or duplicated.
 function splitHuge(area: string[], files: ReviewFile[]): { area: string[]; files: ReviewFile[] }[] {
   if (files.length <= MAX_FILES) return [{ area, files }]
   const buckets = bucketByArea(files)
@@ -120,8 +117,6 @@ function sharedDepth(a: Group, b: Group): number {
   return commonPrefix([a.area, b.area]).length
 }
 
-// Merges inside one section at a time, least important section first, so
-// tests collapse into one chapter before two areas of core code do.
 function mergeToCap(groups: Group[]): void {
   while (groups.length > MAX_CHAPTERS) {
     let section: Section | null = null

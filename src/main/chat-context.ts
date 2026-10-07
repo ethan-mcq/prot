@@ -15,7 +15,6 @@ export function truncate(text: string, limit: number): string {
 
 const STATUS_LETTER = { added: 'A', modified: 'M', removed: 'D', renamed: 'R' } as const
 
-// Stable across turns of a conversation, so it goes in the cached system prompt.
 export function buildChatSystem(detail: PullDetail | null): string {
   if (!detail) return BASE_INSTRUCTIONS
   const lines: string[] = [BASE_INSTRUCTIONS, '', '<pull_request>']
@@ -45,7 +44,6 @@ function describeStep(context: ViewContext): string | null {
   return `Guide step: chapter ${step.index + 1}${title}`
 }
 
-// Changes every turn, so it rides in the latest user message instead of the cached system prompt.
 export function buildViewContext(context: ViewContext): string {
   const lines: string[] = []
   const step = describeStep(context)

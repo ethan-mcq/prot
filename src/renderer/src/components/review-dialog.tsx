@@ -39,7 +39,6 @@ export function ReviewDialog({
   const ownPull = detail.summary.author.login === viewer
   const drafts = session.drafts
 
-  // GitHub rejects a bare review: a comment needs some text, and so does requesting changes.
   const missing =
     event === 'REQUEST_CHANGES' && !body.trim()
       ? 'Explain what needs to change.'
@@ -50,7 +49,7 @@ export function ReviewDialog({
   async function submit() {
     setSubmitting(true)
     try {
-      await window.prot.pulls.submitReview(detail.summary.ref, { event, body: body.trim(), comments: drafts })
+      await window.prot.pulls.submitReview(detail.summary.ref, { commitId: detail.head.sha, event, body: body.trim(), comments: drafts })
       toast.success(event === 'APPROVE' ? 'Approved' : event === 'REQUEST_CHANGES' ? 'Changes requested' : 'Review submitted')
       dispatch({ type: 'drafts/clear' })
       setBody('')

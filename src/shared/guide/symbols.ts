@@ -16,7 +16,6 @@ type DeclPattern = { kind: SymbolKind; regex: RegExp }
 
 type Language = { family: string; extensions: string[]; patterns: DeclPattern[] }
 
-// Patterns run against a trimmed line; the first match names the symbol.
 const LANGUAGES: Language[] = [
   {
     family: 'js',
@@ -136,11 +135,6 @@ export function identifiers(text: string): string[] {
   return code.match(/[A-Za-z_$][\w$]*/g) ?? []
 }
 
-// Walks each hunk once. Added declarations become `added`; the hunk's section
-// header, or a declaration on a context line that changed lines then follow,
-// becomes `modified`; other declarations seen on context lines stay `context`.
-// The lines a symbol owns until the next declaration are its body, and the
-// identifiers there are its references.
 export function fileDecls(file: ReviewFile): Decl[] {
   const language = languageOf(file.path)
   if (language === null) return []
@@ -180,7 +174,6 @@ export function fileDecls(file: ReviewFile): Decl[] {
       }
       if (found !== null) {
         const decl = record(found, 'added')
-        // A type that gains a member points at it, so MainActivity leads to onNewIntent.
         if (section !== null && section.kind === 'type' && section !== decl) section.refs.add(decl.name)
         current = decl
         continue

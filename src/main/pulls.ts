@@ -6,7 +6,6 @@ export class PullService {
 
   constructor(
     private readonly auth: AuthService,
-    // The inbox poll knows when a pull last changed, which tells us if a cached detail is stale.
     private readonly latestUpdatedAt: (ref: PullRef) => string | null
   ) {}
 
@@ -18,7 +17,6 @@ export class PullService {
     return detail
   }
 
-  // For callers that must not refetch four endpoints per call, such as chat turns.
   async cached(ref: PullRef): Promise<PullDetail> {
     const detail = this.details.get(pullKey(ref))
     if (detail && !this.isStale(detail)) return detail
@@ -34,9 +32,7 @@ export class PullService {
   }
 
   async submitReview(ref: PullRef, input: ReviewInput): Promise<void> {
-    // Inline comments are anchored to the diff the reviewer was looking at, so use that commit.
-    const headSha = (await this.cached(ref)).head.sha
-    await this.auth.client().submitReview(ref, headSha, input)
+    await this.auth.client().submitReview(ref, input)
     this.details.delete(pullKey(ref))
   }
 

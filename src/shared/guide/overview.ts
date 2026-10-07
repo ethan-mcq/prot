@@ -35,7 +35,6 @@ export function bodySummary(body: string): string {
     for (const pattern of SKIPPED_LINES) {
       if (pattern.test(line)) skip = true
     }
-    // A skipped line still ends the paragraph above it.
     kept.push(skip ? '' : line)
   }
   for (const paragraph of kept.join('\n').split(/\n\s*\n/)) {

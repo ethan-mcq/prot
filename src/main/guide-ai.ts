@@ -31,9 +31,8 @@ export class GuideService {
     private readonly cacheDir: string
   ) {}
 
-  // Concurrent callers (auto-generate on open plus a manual refresh) share one model call.
   get(ref: PullRef, refresh: boolean): Promise<Guide> {
-    const key = pullKey(ref)
+    const key = `${pullKey(ref)}:${refresh}`
     const running = this.inFlight.get(key)
     if (running) return running
     const next = this.load(ref, refresh).finally(() => this.inFlight.delete(key))
@@ -75,7 +74,6 @@ export class GuideService {
     const model = this.settings.get().model
     let message
     try {
-      // Streaming keeps a large diff from tripping the SDK's non-streaming HTTP timeout.
       message = await client.beta.messages
         .stream({
           model,

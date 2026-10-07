@@ -79,6 +79,7 @@ export type DraftComment = {
 }
 
 export type ReviewInput = {
+  commitId: string
   event: ReviewEvent
   body: string
   comments: DraftComment[]
