@@ -18,7 +18,7 @@ export function FlowStep() {
     <div className="mx-auto max-w-[1400px] space-y-10 px-8 py-8">
       <section className="space-y-4">
         <p className="micro-label">Flow</p>
-        <h2 className="font-serif text-[28px] leading-tight font-semibold tracking-tight">How the change fits together</h2>
+        <h2 className="text-[28px] leading-tight font-semibold tracking-tight">How the change fits together</h2>
         {flow.nodes.length > 0 ? (
           <div className="overflow-hidden rounded-xl border bg-card shadow-soft">
             <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b px-5 py-3">
@@ -236,7 +236,7 @@ export function ChapterList() {
                 <span className="font-mono text-xs text-muted-foreground tabular-nums">{pad2(index + 1)}</span>
                 <span className="min-w-0 flex-1 space-y-1">
                   <span className="flex items-center gap-2">
-                    <span className="font-serif text-[17px] leading-snug font-semibold">{chapter.title}</span>
+                    <span className="text-[17px] leading-snug font-semibold">{chapter.title}</span>
                     {done && <Check aria-label="Reviewed" className="size-4 shrink-0 text-added" strokeWidth={2.5} />}
                   </span>
                   <span className="line-clamp-2 block text-[13px] leading-5 text-muted-foreground">{chapter.summary}</span>

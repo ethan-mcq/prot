@@ -1,9 +1,7 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @import '@fontsource-variable/inter';
-@import '@fontsource-variable/jetbrains-mono';
-@import '@fontsource/source-serif-4/500.css';
-@import '@fontsource/source-serif-4/600.css';
+@import '@fontsource-variable/geist-mono';
 
 @custom-variant dark (&:is(.dark *));
 
@@ -84,8 +82,15 @@
 
 @theme inline {
   --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, monospace;
-  --font-serif: 'Source Serif 4', ui-serif, Georgia, serif;
+  --font-mono: 'Geist Mono Variable', ui-monospace, monospace;
+  --font-weight-normal: 450;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 560;
+  --font-weight-bold: 700;
+  --text-xs--letter-spacing: 0em;
+  --text-sm--letter-spacing: -0.01em;
+  --text-base--letter-spacing: -0.02em;
+  --text-lg--letter-spacing: -0.02em;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -136,8 +141,7 @@
     height: 100%;
   }
   body {
-    @apply bg-background text-foreground font-sans antialiased;
-    font-feature-settings: 'cv11', 'ss01';
+    @apply bg-background text-foreground font-sans font-normal antialiased;
     -webkit-font-smoothing: antialiased;
     overflow: hidden;
   }

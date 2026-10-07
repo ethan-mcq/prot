@@ -30,7 +30,7 @@ export function OverviewStep() {
         <div className="min-w-0 space-y-8">
           <section className="space-y-4">
             <p className="micro-label">Before you start</p>
-            <h2 className="font-serif text-[28px] leading-tight font-semibold tracking-tight">Overview</h2>
+            <h2 className="text-[28px] leading-tight font-semibold tracking-tight">Overview</h2>
             <Markdown className="text-[15px] leading-7 text-foreground/85">{overview.summary}</Markdown>
             {overview.points.length > 0 && (
               <ol className="space-y-3 pt-1">

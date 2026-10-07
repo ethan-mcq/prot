@@ -50,7 +50,7 @@ export function PullView({ pullRef, viewer }: { pullRef: PullRef; viewer: string
       <div className="flex h-full flex-col">
         <div className="drag-region h-12 shrink-0 border-b" />
         <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
-          <p className="font-serif text-xl">Could not load this pull request</p>
+          <p className="text-xl font-semibold">Could not load this pull request</p>
           <p className="max-w-md text-sm text-muted-foreground">{load.message}</p>
           <Button variant="outline" size="sm" onClick={() => setVersion((v) => v + 1)}>
             <RefreshCw /> Try again
@@ -177,7 +177,7 @@ function ReviewScreen({ detail, viewer, onRefetch }: { detail: PullDetail; viewe
             </div>
           </div>
           <div className="px-6 pt-1 pb-4">
-            <h1 className="line-clamp-2 font-serif text-[22px] leading-snug font-semibold tracking-tight" title={detail.summary.title}>
+            <h1 className="line-clamp-2 text-[22px] leading-snug font-semibold tracking-tight" title={detail.summary.title}>
               {detail.summary.title}
             </h1>
             <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">

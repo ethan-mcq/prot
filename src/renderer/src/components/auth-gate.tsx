@@ -39,7 +39,7 @@ export function AuthGate({ error, onAuth }: { error: string | null; onAuth: (sta
       <div className="dot-grid flex flex-1 items-center justify-center px-6 pb-12">
         <div className="w-full max-w-[380px] rounded-2xl border bg-card p-8 shadow-soft">
           <Logo className="mx-auto size-16" />
-          <h1 className="mt-5 text-center font-serif text-3xl font-semibold tracking-tight">prot</h1>
+          <h1 className="mt-5 text-center text-3xl font-semibold tracking-tight">prot</h1>
           <p className="mt-1.5 text-center text-sm text-muted-foreground">Guided reviews for your GitHub pull requests</p>
           <Button
             className="mt-7 w-full"

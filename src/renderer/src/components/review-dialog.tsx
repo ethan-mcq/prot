@@ -67,7 +67,7 @@ export function ReviewDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="gap-5 sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle className="font-serif text-xl">Finish your review</DialogTitle>
+          <DialogTitle className="text-xl">Finish your review</DialogTitle>
           <DialogDescription>
             {detail.summary.ref.owner}/{detail.summary.ref.repo}#{detail.summary.ref.number}
           </DialogDescription>

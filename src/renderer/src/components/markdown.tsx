@@ -18,8 +18,8 @@ const components: Components = {
   p: ({ children }) => <p className="my-2 first:mt-0 last:mb-0">{children}</p>,
   ul: ({ children }) => <ul className="my-2 list-disc space-y-1 pl-5">{children}</ul>,
   ol: ({ children }) => <ol className="my-2 list-decimal space-y-1 pl-5">{children}</ol>,
-  h1: ({ children }) => <h3 className="mt-4 mb-2 font-serif text-lg font-semibold first:mt-0">{children}</h3>,
-  h2: ({ children }) => <h3 className="mt-4 mb-2 font-serif text-base font-semibold first:mt-0">{children}</h3>,
+  h1: ({ children }) => <h3 className="mt-4 mb-2 text-lg font-semibold first:mt-0">{children}</h3>,
+  h2: ({ children }) => <h3 className="mt-4 mb-2 text-base font-semibold first:mt-0">{children}</h3>,
   h3: ({ children }) => <h4 className="mt-3 mb-1.5 text-sm font-semibold first:mt-0">{children}</h4>,
   blockquote: ({ children }) => (
     <blockquote className="my-2 border-l-2 pl-3 text-muted-foreground">{children}</blockquote>

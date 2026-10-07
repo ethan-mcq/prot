@@ -106,7 +106,7 @@ function EmptyState({ reviewCount }: { reviewCount: number }) {
       <div className="drag-region h-12 shrink-0" />
       <div className="dot-grid flex flex-1 flex-col items-center justify-center gap-3 pb-12 text-center">
         <Logo className="size-14" />
-        <h1 className="mt-2 font-serif text-2xl font-semibold tracking-tight">Pick a pull request</h1>
+        <h1 className="mt-2 text-2xl font-semibold tracking-tight">Pick a pull request</h1>
         <p className="text-sm text-muted-foreground">
           {reviewCount === 0
             ? 'Nothing is waiting for your review.'

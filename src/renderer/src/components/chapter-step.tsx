@@ -35,7 +35,7 @@ export function ChapterStep({ index }: { index: number }) {
               {pad2(index + 1)} / {pad2(session.guide.chapters.length)}
             </span>
           </div>
-          <h2 className="font-serif text-[26px] leading-tight font-semibold tracking-tight">{chapter.title}</h2>
+          <h2 className="text-[26px] leading-tight font-semibold tracking-tight">{chapter.title}</h2>
           <label className="flex w-fit cursor-pointer items-center gap-2 rounded-md border bg-card px-2.5 py-1.5 text-sm shadow-xs transition-colors hover:bg-accent has-[[data-state=checked]]:border-added/40 has-[[data-state=checked]]:text-added">
             <Checkbox
               checked={reviewed}

@@ -198,7 +198,7 @@ function Messages({ turns, onStarter, canStart }: { turns: Turn[]; onStarter: (t
   if (turns.length === 0) {
     return (
       <div className="flex min-h-0 flex-1 flex-col justify-end gap-2 p-4">
-        <p className="mb-2 font-serif text-lg">What would you like to know?</p>
+        <p className="mb-2 text-lg font-semibold">What would you like to know?</p>
         {STARTERS.map((starter) => (
           <button
             key={starter}
@@ -330,7 +330,7 @@ function KeySetup({ onDone }: { onDone: () => void }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-5">
       <div className="space-y-1.5">
-        <p className="font-serif text-lg">{keys.anthropic ? 'Chat settings' : 'Connect Claude'}</p>
+        <p className="text-lg font-semibold">{keys.anthropic ? 'Chat settings' : 'Connect Claude'}</p>
         <p className="text-[13px] leading-5 text-muted-foreground">
           Ask prot and the AI guide use your own Anthropic API key.
           {keys.anthropic && ' A key is saved. Enter a new one to replace it.'}

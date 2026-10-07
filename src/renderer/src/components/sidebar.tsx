@@ -36,7 +36,7 @@ export function Sidebar({
     <aside className="flex w-[300px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
       <div className="drag-region flex h-12 shrink-0 items-center gap-2 pr-3 pl-20">
         <Logo className="size-6" />
-        <span className="font-serif text-[17px] font-semibold tracking-tight">prot</span>
+        <span className="text-[17px] font-semibold tracking-tight">prot</span>
         {reviewCount > 0 && (
           <span
             className="rounded-full bg-primary px-1.5 font-mono text-[10.5px] leading-[18px] text-primary-foreground tabular-nums"
