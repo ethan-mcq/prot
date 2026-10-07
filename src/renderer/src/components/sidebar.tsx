@@ -36,7 +36,7 @@ export function Sidebar({
         icon={<GitPullRequest />}
         title="Pull requests"
         actions={
-          <PaneButton aria-label="Refresh pull requests" title="Refresh (r)" onClick={onRefresh} disabled={refreshing}>
+          <PaneButton aria-label="Refresh pull requests" title="Refresh the pull request list (r)" onClick={onRefresh} disabled={refreshing}>
             <RefreshCw className={cn(refreshing && 'animate-spin')} />
           </PaneButton>
         }

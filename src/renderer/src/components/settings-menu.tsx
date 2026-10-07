@@ -89,6 +89,13 @@ export function SettingsMenu({ onSignOut }: { onSignOut: () => void }) {
           checked={settings.autoAiGuide}
           onChange={(autoAiGuide) => void updateSettings({ autoAiGuide })}
         />
+        <SettingSwitch
+          id="auto-refresh-stale"
+          label="Refresh stale AI guides automatically"
+          hint="Rewrite the AI guide when a push leaves it far out of date"
+          checked={settings.autoRefreshStaleGuides}
+          onChange={(autoRefreshStaleGuides) => void updateSettings({ autoRefreshStaleGuides })}
+        />
         <Separator />
         <Button variant="ghost" size="sm" className="w-full justify-start text-muted-foreground" onClick={onSignOut}>
           <LogOut /> Sign out

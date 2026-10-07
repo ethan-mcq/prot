@@ -9,16 +9,20 @@ import type { SettingsStore } from './settings'
 
 const GUIDE_MAX_TOKENS = 32_000
 
-function cacheFileName(detail: PullDetail): string {
-  const { owner, repo, number } = detail.summary.ref
-  const sha = detail.head.sha.replace(/[^A-Za-z0-9._-]/g, '_')
-  return `${owner}__${repo}__${number}__${sha}.json`
+function cacheFileName(ref: PullRef): string {
+  return `${ref.owner}__${ref.repo}__${ref.number}.json`
 }
 
-function isCachedGuide(value: unknown, detail: PullDetail): value is Guide {
+function isCachedGuide(value: unknown): value is Guide {
   if (typeof value !== 'object' || value === null) return false
-  const guide = value as Partial<Guide>
-  return guide.source === 'ai' && guide.headSha === detail.head.sha && Array.isArray(guide.chapters)
+  const guide = value as Record<string, unknown>
+  return (
+    guide.source === 'ai' &&
+    typeof guide.headSha === 'string' &&
+    Array.isArray(guide.chapters) &&
+    typeof guide.coverage === 'object' &&
+    guide.coverage !== null
+  )
 }
 
 export class GuideService {
@@ -41,21 +45,20 @@ export class GuideService {
   }
 
   private async load(ref: PullRef, refresh: boolean): Promise<Guide> {
-    const detail = await this.pulls.cached(ref)
-    const file = join(this.cacheDir, cacheFileName(detail))
+    const file = join(this.cacheDir, cacheFileName(ref))
     if (!refresh) {
-      const cached = await this.readCache(file, detail)
+      const cached = await this.readCache(file)
       if (cached) return cached
     }
-    const guide = await this.generate(detail)
+    const guide = await this.generate(await this.pulls.cached(ref))
     await this.writeCache(file, guide)
     return guide
   }
 
-  private async readCache(file: string, detail: PullDetail): Promise<Guide | null> {
+  private async readCache(file: string): Promise<Guide | null> {
     try {
       const parsed: unknown = JSON.parse(await readFile(file, 'utf8'))
-      return isCachedGuide(parsed, detail) ? parsed : null
+      return isCachedGuide(parsed) ? parsed : null
     } catch {
       return null
     }

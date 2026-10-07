@@ -15,13 +15,15 @@ describe('parseStoredSettings', () => {
       model: 'gpt-4',
       chatEffort: 'ultra',
       notify: 'yes',
-      autoAiGuide: false
+      autoAiGuide: false,
+      autoRefreshStaleGuides: true
     })
     expect(stored).toEqual({
       ...DEFAULT_SETTINGS,
       theme: 'dark',
       pollSeconds: 30,
-      autoAiGuide: false
+      autoAiGuide: false,
+      autoRefreshStaleGuides: true
     })
   })
 })

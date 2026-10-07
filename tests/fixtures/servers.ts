@@ -12,6 +12,10 @@ export type FixtureServer = {
   close(): Promise<void>
 }
 
+export type GitHubFixture = FixtureServer & {
+  push(): void
+}
+
 function readBody(req: IncomingMessage): Promise<unknown> {
   return new Promise((resolve) => {
     let raw = ''
@@ -44,9 +48,10 @@ function closer(server: Server) {
     })
 }
 
-export async function startGitHub(): Promise<FixtureServer> {
+export async function startGitHub(): Promise<GitHubFixture> {
   const requests: Recorded[] = []
   const prPath = `/repos/${pr.pull.owner}/${pr.pull.repo}`
+  let state = pr.openedState
 
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://fixture')
@@ -61,14 +66,14 @@ export async function startGitHub(): Promise<FixtureServer> {
     if (p === '/user') return json(res, 200, pr.viewerUser)
     if (p === '/search/issues') {
       const q = url.searchParams.get('q') ?? ''
-      if (q.includes('review-requested:@me')) return json(res, 200, pr.reviewSearch)
+      if (q.includes('review-requested:@me')) return json(res, 200, pr.reviewSearch(state))
       if (q.includes('author:@me')) return json(res, 200, pr.mineSearch)
       return json(res, 200, { total_count: 0, items: [] })
     }
-    if (p === `${prPath}/pulls/${pr.pull.number}`) return json(res, 200, pr.pullDetail)
+    if (p === `${prPath}/pulls/${pr.pull.number}`) return json(res, 200, pr.pullDetail(state))
     if (p === `${prPath}/pulls/${pr.pull.number}/files`) {
       const page = Number(url.searchParams.get('page') ?? '1')
-      return json(res, 200, page === 1 ? pr.files : [])
+      return json(res, 200, page === 1 ? state.files : [])
     }
     if (p === `${prPath}/pulls/${pr.pull.number}/comments`) return json(res, 200, pr.reviewComments)
     if (p === `${prPath}/pulls/${pr.pull.number}/reviews`) {
@@ -80,22 +85,29 @@ export async function startGitHub(): Promise<FixtureServer> {
     }
     if (p.startsWith(`${prPath}/contents/`)) {
       const path = decodeURIComponent(p.slice(`${prPath}/contents/`.length))
-      const content = pr.fileContent(path)
+      const content = pr.fileContent(state, path)
       if (content === null) return json(res, 404, { message: 'Not Found' })
       res.writeHead(200, { 'content-type': 'text/plain' })
       return res.end(content)
     }
-    if (p === `${prPath}/git/trees/${pr.pull.headSha}`) {
+    if (p === `${prPath}/git/trees/${state.headSha}`) {
       return json(res, 200, {
-        sha: pr.pull.headSha,
+        sha: state.headSha,
         truncated: false,
-        tree: pr.tree.map((path) => ({ path, type: 'blob' }))
+        tree: pr.tree(state).map((path) => ({ path, type: 'blob' }))
       })
     }
     return json(res, 404, { message: `fixture has no route for ${req.method} ${p}` })
   })
 
-  return { url: await listen(server), requests, close: closer(server) }
+  return {
+    url: await listen(server),
+    requests,
+    close: closer(server),
+    push: () => {
+      state = pr.pushedState
+    }
+  }
 }
 
 export const CHAT_REPLY = 'The share flow starts when onNewIntent hands the intent to takeShare.'

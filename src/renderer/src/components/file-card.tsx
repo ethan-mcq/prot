@@ -6,9 +6,10 @@ import { DiffStat } from '@/components/diff-stat'
 import { DiffView } from '@/components/diff-view'
 import { FileIcon } from '@/components/file-icon'
 import { PaneButton } from '@/components/pane'
+import { SinceGuideTag } from '@/components/since-guide-tag'
 import { splitPath } from '@/lib/paths'
 import { useReview } from '@/lib/review-context'
-import { isReviewed } from '@/lib/review-session'
+import { isChangedSinceGuide, isReviewed } from '@/lib/review-session'
 import { cn } from '@/lib/utils'
 
 const STATUS_TAG: Record<ChangedFile['status'], { label: string; className: string }> = {
@@ -41,6 +42,7 @@ export function FileCard({ file }: { file: ChangedFile }) {
         <span className={cn('shrink-0 rounded-[4px] border border-current/25 px-1 font-mono text-[10px] leading-[15px]', tag.className)}>
           {tag.label}
         </span>
+        {isChangedSinceGuide(session.drift, file.path) && <SinceGuideTag />}
         <DiffStat additions={file.additions} deletions={file.deletions} className="text-[11.5px]" />
         <span className="flex-1" />
         <label className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-[6px] px-1.5 py-1 font-mono text-[11.5px] text-muted-foreground transition-colors hover:bg-accent has-[[data-state=checked]]:text-added">

@@ -6,11 +6,12 @@ import { DiffView } from '@/components/diff-view'
 import { FileIcon } from '@/components/file-icon'
 import { STATUS_LETTER } from '@/components/file-tree'
 import { Frame, PaneButton, PaneHeader } from '@/components/pane'
+import { SinceGuideTag } from '@/components/since-guide-tag'
 import { languageFor } from '@/lib/highlight'
 import { useHighlighted, useHotkeys } from '@/lib/hooks'
 import { fileLines, splitPath } from '@/lib/paths'
 import { useReview } from '@/lib/review-context'
-import type { TreeMode } from '@/lib/review-session'
+import { isChangedSinceGuide, type TreeMode } from '@/lib/review-session'
 import { cn, errorMessage } from '@/lib/utils'
 import { useViewStore } from '@/lib/view-context'
 
@@ -161,6 +162,7 @@ export function IdeView({ path }: { path: string }) {
                 depth={0}
                 selected={path}
                 changed={changed}
+                sinceGuide={(file) => isChangedSinceGuide(session.drift, file)}
                 isOpen={isOpen}
                 onToggle={(dir) =>
                   setToggled((prev) => {
@@ -208,6 +210,7 @@ function TreeLevel({
   depth,
   selected,
   changed,
+  sinceGuide,
   isOpen,
   onToggle,
   onSelect
@@ -216,6 +219,7 @@ function TreeLevel({
   depth: number
   selected: string
   changed: Map<string, ChangedFile>
+  sinceGuide: (path: string) => boolean
   isOpen: (dir: string) => boolean
   onToggle: (dir: string) => void
   onSelect: (path: string) => void
@@ -249,6 +253,7 @@ function TreeLevel({
                 depth={depth + 1}
                 selected={selected}
                 changed={changed}
+                sinceGuide={sinceGuide}
                 isOpen={isOpen}
                 onToggle={onToggle}
                 onSelect={onSelect}
@@ -281,6 +286,7 @@ function TreeLevel({
         <span className={cn('min-w-0 flex-1 truncate', file?.status === 'removed' && 'line-through opacity-70')}>
           {entry.name}
         </span>
+        {sinceGuide(entry.path) && <SinceGuideTag compact />}
         {file && <DiffStat additions={file.additions} deletions={file.deletions} className="text-[10.5px]" />}
       </button>
     )

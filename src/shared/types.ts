@@ -143,15 +143,39 @@ export type Chapter = {
   files: string[]
 }
 
-export type GuideSource = 'heuristic' | 'ai'
+export type FileFingerprint = { hash: string; additions: number; deletions: number }
 
-export type Guide = {
-  source: GuideSource
+export type GuideCoverage = Record<string, FileFingerprint>
+
+type GuideContent = {
   headSha: string
   overview: { summary: string; points: string[] }
   flow: Flow
   chapters: Chapter[]
 }
+
+export type Guide =
+  | (GuideContent & { source: 'heuristic' })
+  | (GuideContent & { source: 'ai'; coverage: GuideCoverage })
+
+export type DriftReason =
+  | { kind: 'uncovered-file'; path: string }
+  | { kind: 'removed-file'; path: string }
+  | { kind: 'line-share'; lines: number; covered: number }
+
+export type GuideDrift =
+  | { kind: 'fresh' }
+  | { kind: 'minor'; changed: string[]; added: string[]; sinceSha: string }
+  | {
+      kind: 'significant'
+      changed: string[]
+      added: string[]
+      removed: string[]
+      reasons: DriftReason[]
+      additions: number
+      deletions: number
+      sinceSha: string
+    }
 
 export type GuideStep =
   | { kind: 'overview' }
@@ -185,6 +209,7 @@ export type Settings = {
   chatEffort: Effort
   notify: boolean
   autoAiGuide: boolean
+  autoRefreshStaleGuides: boolean
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -193,7 +218,8 @@ export const DEFAULT_SETTINGS: Settings = {
   model: 'claude-sonnet-5-5',
   chatEffort: 'medium',
   notify: true,
-  autoAiGuide: true
+  autoAiGuide: true,
+  autoRefreshStaleGuides: false
 }
 
 export type KeysState = { anthropic: boolean }

@@ -1,5 +1,16 @@
 import { lineAnchor } from '@shared/diff'
-import type { Chapter, DiffLine, DiffLocation, DraftComment, FlowNode, Guide, GuideStep, PullDetail } from '@shared/types'
+import { buildHeuristicGuide, guideDrift, withNewSinceGuide } from '@shared/guide'
+import type {
+  Chapter,
+  DiffLine,
+  DiffLocation,
+  DraftComment,
+  FlowNode,
+  Guide,
+  GuideDrift,
+  GuideStep,
+  PullDetail
+} from '@shared/types'
 import { pullKey } from '@shared/types'
 
 export type TreeMode = 'changed' | 'all'
@@ -11,7 +22,10 @@ export type Focus = DiffLocation & { nonce: number }
 export type AiGuideRequest = { status: 'idle' } | { status: 'loading' } | { status: 'failed'; message: string }
 
 export type ReviewSession = {
+  detail: PullDetail
+  written: Guide
   guide: Guide
+  drift: GuideDrift
   ai: AiGuideRequest
   step: number
   reviewed: string[]
@@ -26,6 +40,7 @@ export type ReviewAction =
   | { type: 'ai/start' }
   | { type: 'ai/loaded'; guide: Guide }
   | { type: 'ai/failed'; message: string }
+  | { type: 'detail/updated'; detail: PullDetail; reviewed: string[] }
   | { type: 'reviewed/set'; keys: string[]; reviewed: boolean }
   | { type: 'draft/add'; path: string; line: DiffLine; body: string }
   | { type: 'draft/edit'; id: string; body: string }
@@ -60,6 +75,17 @@ export function isReviewed(session: ReviewSession, keys: string[]): boolean {
   return keys.every((key) => session.reviewed.includes(key))
 }
 
+export function isChangedSinceGuide(drift: GuideDrift, path: string): boolean {
+  if (drift.kind === 'fresh') return false
+  return drift.changed.includes(path) || drift.added.includes(path)
+}
+
+function present(written: Guide, detail: PullDetail): Pick<ReviewSession, 'detail' | 'written' | 'guide' | 'drift'> {
+  const drift = guideDrift(written, detail)
+  const guide = drift.kind === 'fresh' ? written : withNewSinceGuide(written, detail, drift.added)
+  return { detail, written, guide, drift }
+}
+
 export function reviewReducer(state: ReviewSession, action: ReviewAction): ReviewSession {
   switch (action.type) {
     case 'step/go':
@@ -68,10 +94,23 @@ export function reviewReducer(state: ReviewSession, action: ReviewAction): Revie
       return { ...state, step: clampStep(state.step + action.delta, state.guide), focus: null }
     case 'ai/start':
       return { ...state, ai: { status: 'loading' } }
-    case 'ai/loaded':
-      return { ...state, guide: action.guide, ai: { status: 'idle' }, step: clampStep(state.step, action.guide) }
+    case 'ai/loaded': {
+      const next = present(action.guide, state.detail)
+      return { ...state, ...next, ai: { status: 'idle' }, step: clampStep(state.step, next.guide) }
+    }
     case 'ai/failed':
       return { ...state, ai: { status: 'failed', message: action.message } }
+    case 'detail/updated': {
+      const written = state.written.source === 'heuristic' ? buildHeuristicGuide(action.detail) : state.written
+      const next = present(written, action.detail)
+      const pushed = action.detail.head.sha !== state.detail.head.sha
+      return {
+        ...state,
+        ...next,
+        step: clampStep(state.step, next.guide),
+        reviewed: pushed ? action.reviewed : state.reviewed
+      }
+    }
     case 'reviewed/set': {
       const others = state.reviewed.filter((key) => !action.keys.includes(key))
       return { ...state, reviewed: action.reviewed ? [...others, ...action.keys] : others }
@@ -116,7 +155,7 @@ export function storageKey(detail: PullDetail): string {
   return `prot:review:${pullKey(detail.summary.ref)}@${detail.head.sha}`
 }
 
-function readStored(key: string): Stored {
+export function readStored(key: string): Stored {
   try {
     const raw = localStorage.getItem(key)
     if (!raw) return { reviewed: [], drafts: [] }
@@ -135,10 +174,10 @@ export function saveSession(key: string, session: ReviewSession): void {
   }
 }
 
-export function initSession({ detail, guide }: { detail: PullDetail; guide: Guide }): ReviewSession {
+export function initSession(detail: PullDetail): ReviewSession {
   const stored = readStored(storageKey(detail))
   return {
-    guide,
+    ...present(buildHeuristicGuide(detail), detail),
     ai: { status: 'idle' },
     step: 0,
     reviewed: stored.reviewed,

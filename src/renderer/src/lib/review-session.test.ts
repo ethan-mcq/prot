@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import type { Chapter, DiffLine, FlowNode, Guide } from '@shared/types'
-import { reviewReducer, type ReviewSession } from './review-session'
+import { parseAiGuide } from '@shared/guide'
+import { added, capySharePull, KOTLIN_MODULE, pullWith, SWIFT_MODULE } from '@shared/guide/fixtures'
+import type { Chapter, DiffLine, FlowNode, Guide, PullDetail } from '@shared/types'
+import { initSession, reviewReducer, type ReviewSession } from './review-session'
 
 function guideWith(chapterCount: number): Guide {
   const chapters: Chapter[] = Array.from({ length: chapterCount }, (_, i) => ({
@@ -19,8 +21,12 @@ function guideWith(chapterCount: number): Guide {
 }
 
 function session(chapterCount: number, step = 0): ReviewSession {
+  const guide = guideWith(chapterCount)
   return {
-    guide: guideWith(chapterCount),
+    detail: pullWith([]),
+    written: guide,
+    guide,
+    drift: { kind: 'fresh' },
     ai: { status: 'idle' },
     step,
     reviewed: [],
@@ -82,6 +88,57 @@ describe('jumping to a flow node', () => {
       step: 1,
       ide: { open: true, mode: 'changed', path: 'lib/Other.kt' },
       focus: null
+    })
+  })
+})
+
+describe('a pull request update while reading', () => {
+  const QUEUE = 'packages/mobile/src/share/share-queue.ts'
+  const pushed: PullDetail = {
+    ...capySharePull,
+    head: { ...capySharePull.head, sha: 'head456' },
+    files: [...capySharePull.files, added(QUEUE, ['export const queue: string[] = []'])]
+  }
+  const chapterFiles = (state: ReviewSession) => state.guide.chapters.map((chapter) => [chapter.title, chapter.files])
+
+  it('keeps the AI guide, step and open IDE, and puts the uncovered file in a trailing chapter', () => {
+    const raw = {
+      overview: { summary: 'Share text into a thread.', points: [] },
+      chapters: [{ title: 'Native share module', summary: '', files: [KOTLIN_MODULE, SWIFT_MODULE] }]
+    }
+    let state = reviewReducer(initSession(capySharePull), { type: 'ai/loaded', guide: parseAiGuide(raw, capySharePull) })
+    state = reviewReducer(state, { type: 'step/go', index: 2 })
+    state = reviewReducer(state, { type: 'ide/open', path: KOTLIN_MODULE })
+    state = reviewReducer(state, { type: 'reviewed/set', keys: [KOTLIN_MODULE], reviewed: true })
+
+    const comment = reviewReducer(state, { type: 'detail/updated', detail: capySharePull, reviewed: [] })
+    expect({ drift: comment.drift, reviewed: comment.reviewed }).toEqual({ drift: { kind: 'fresh' }, reviewed: [KOTLIN_MODULE] })
+
+    const push = reviewReducer(state, { type: 'detail/updated', detail: pushed, reviewed: [] })
+    expect({
+      step: push.step,
+      ide: push.ide,
+      reviewed: push.reviewed,
+      drift: push.drift.kind,
+      first: push.guide.chapters[0]?.title,
+      last: chapterFiles(push).at(-1)
+    }).toEqual({
+      step: 2,
+      ide: { open: true, mode: 'changed', path: KOTLIN_MODULE },
+      reviewed: [],
+      drift: 'significant',
+      first: 'Native share module',
+      last: ['New since guide', [QUEUE]]
+    })
+  })
+
+  it('rebuilds a quick guide from the new diff, which is never stale', () => {
+    const push = reviewReducer(initSession(capySharePull), { type: 'detail/updated', detail: pushed, reviewed: [] })
+    const placed = chapterFiles(push).flatMap(([, files]) => files)
+    expect({ source: push.guide.source, drift: push.drift, hasQueue: placed.includes(QUEUE) }).toEqual({
+      source: 'heuristic',
+      drift: { kind: 'fresh' },
+      hasQueue: true
     })
   })
 })

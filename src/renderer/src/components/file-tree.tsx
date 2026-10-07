@@ -1,9 +1,10 @@
 import { Check, Maximize2 } from 'lucide-react'
 import type { ChangedFile, FileStatus } from '@shared/types'
 import { DiffStat } from '@/components/diff-stat'
+import { SinceGuideTag } from '@/components/since-guide-tag'
 import { splitPath } from '@/lib/paths'
 import { useReview } from '@/lib/review-context'
-import { isReviewed } from '@/lib/review-session'
+import { isChangedSinceGuide, isReviewed } from '@/lib/review-session'
 import { cn } from '@/lib/utils'
 
 export const STATUS_LETTER: Record<FileStatus, { letter: string; className: string }> = {
@@ -61,6 +62,7 @@ function FileLine({ file, onSelect }: { file: ChangedFile; onSelect: () => void 
         <span className={cn('min-w-0 flex-1 truncate', file.status === 'removed' && 'line-through opacity-70')}>
           {splitPath(file.path).name}
         </span>
+        {isChangedSinceGuide(session.drift, file.path) && <SinceGuideTag compact />}
         {reviewed && <Check aria-label="Reviewed" className="size-3 shrink-0 text-added" strokeWidth={3} />}
         <DiffStat additions={file.additions} deletions={file.deletions} className="text-[11px]" />
       </button>

@@ -1,6 +1,7 @@
 import type { Flow, FlowEdge, FlowNode, FlowNodeChange, Guide, PullDetail } from '../types'
 import { numberChapters, planChapters, ROLE_INFO, type ChapterDraft } from './chapters'
 import { reviewFiles, type ReviewFile } from './files'
+import { guideCoverage } from './drift'
 import { chapterIndex } from './flow'
 import { declsByPath } from './symbols'
 
@@ -214,6 +215,7 @@ export function parseAiGuide(raw: unknown, detail: PullDetail): Guide {
     headSha: detail.head.sha,
     overview: { summary: overview.summary.trim(), points },
     flow: parseFlow(value.flow, resolvePath, chapterIndex(chapters)),
-    chapters
+    chapters,
+    coverage: guideCoverage(detail)
   }
 }

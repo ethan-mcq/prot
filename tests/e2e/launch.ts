@@ -2,12 +2,12 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { startAnthropic, startGitHub, type FixtureServer } from '../fixtures/servers'
+import { startAnthropic, startGitHub, type FixtureServer, type GitHubFixture } from '../fixtures/servers'
 
 export type Harness = {
   app: ElectronApplication
   page: Page
-  github: FixtureServer
+  github: GitHubFixture
   anthropic: FixtureServer
   close(): Promise<void>
 }

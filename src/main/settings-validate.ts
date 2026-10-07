@@ -18,7 +18,8 @@ const FIELDS: FieldParsers = {
   model: (value) => AI_MODELS.find((model) => model === value),
   chatEffort: (value) => EFFORTS.find((effort) => effort === value),
   notify: (value) => (typeof value === 'boolean' ? value : undefined),
-  autoAiGuide: (value) => (typeof value === 'boolean' ? value : undefined)
+  autoAiGuide: (value) => (typeof value === 'boolean' ? value : undefined),
+  autoRefreshStaleGuides: (value) => (typeof value === 'boolean' ? value : undefined)
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

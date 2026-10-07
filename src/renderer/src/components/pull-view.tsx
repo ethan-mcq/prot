@@ -1,7 +1,22 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ComponentProps } from 'react'
-import { Check, ChevronLeft, ChevronRight, ExternalLink, GitPullRequest, Loader2, RefreshCw, ScrollText, Sparkles, Workflow, X } from 'lucide-react'
-import type { Chapter, GuideStep, PullDetail, PullRef } from '@shared/types'
-import { buildHeuristicGuide } from '@shared/guide'
+import {
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  ExternalLink,
+  GitCommitHorizontal,
+  GitPullRequest,
+  Loader2,
+  RefreshCw,
+  ScrollText,
+  Sparkles,
+  WandSparkles,
+  Workflow,
+  X
+} from 'lucide-react'
+import type { Chapter, DriftReason, GuideDrift, GuideStep, PullDetail, PullRef } from '@shared/types'
+import { pullKey } from '@shared/types'
+import { classifyFile } from '@shared/guide'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ChapterStep } from '@/components/chapter-step'
@@ -14,7 +29,7 @@ import { ReviewDialog } from '@/components/review-dialog'
 import { TitleBarPortal } from '@/components/title-bar'
 import { UserAvatar } from '@/components/user-avatar'
 import { useHotkeys } from '@/lib/hooks'
-import { pad2, relativeTime } from '@/lib/paths'
+import { pad2, relativeTime, splitPath } from '@/lib/paths'
 import { usePrefs } from '@/lib/prefs'
 import { ReviewContext, useReview, type Review } from '@/lib/review-context'
 import {
@@ -22,6 +37,7 @@ import {
   guideSteps,
   initSession,
   isReviewed,
+  readStored,
   reviewReducer,
   saveSession,
   storageKey
@@ -60,27 +76,17 @@ export function PullView({ pullRef, viewer }: { pullRef: PullRef; viewer: string
       </div>
     )
   }
-  return (
-    <ReviewScreen
-      key={load.detail.head.sha}
-      detail={load.detail}
-      viewer={viewer}
-      onRefetch={() => setVersion((v) => v + 1)}
-    />
-  )
+  return <ReviewScreen initial={load.detail} viewer={viewer} />
 }
 
-function ReviewScreen({ detail, viewer, onRefetch }: { detail: PullDetail; viewer: string; onRefetch: () => void }) {
-  const [session, dispatch] = useReducer(
-    reviewReducer,
-    { detail, guide: buildHeuristicGuide(detail) },
-    initSession
-  )
+function ReviewScreen({ initial, viewer }: { initial: PullDetail; viewer: string }) {
+  const [session, dispatch] = useReducer(reviewReducer, initial, initSession)
   const [reviewOpen, setReviewOpen] = useState(false)
   const { settings, keys } = usePrefs()
   const { updateView } = useViewStore()
-  const ref = detail.summary.ref
-  const { guide } = session
+  const ref = initial.summary.ref
+  const { detail, guide, drift } = session
+  const sha = detail.head.sha
   const steps = guideSteps(guide)
   const step = steps[session.step] ?? { kind: 'overview' }
 
@@ -88,25 +94,55 @@ function ReviewScreen({ detail, viewer, onRefetch }: { detail: PullDetail; viewe
     saveSession(storageKey(detail), session)
   }, [detail, session])
 
+  const latestFetch = useRef(0)
+  const syncedAt = useRef(initial.summary.updatedAt)
+  const refetch = useCallback(
+    async (inboxUpdatedAt: string | null) => {
+      const id = ++latestFetch.current
+      try {
+        const next = await window.prot.pulls.get(ref)
+        if (id !== latestFetch.current) return
+        dispatch({ type: 'detail/updated', detail: next, reviewed: readStored(storageKey(next)).reviewed })
+        if (inboxUpdatedAt !== null) syncedAt.current = inboxUpdatedAt
+      } catch {
+        // syncedAt only moves on success, so the next inbox change retries.
+      }
+    },
+    [ref]
+  )
+
+  useEffect(
+    () =>
+      window.prot.inbox.onChange((inbox) => {
+        const summary = inbox.pulls.find((pull) => pullKey(pull.ref) === pullKey(ref))
+        if (summary && summary.updatedAt !== syncedAt.current) void refetch(summary.updatedAt)
+      }),
+    [ref, refetch]
+  )
+
   const files = useRef(new Map<string, Promise<string>>())
-  const tree = useRef<Promise<string[]> | null>(null)
+  const tree = useRef<{ sha: string; paths: Promise<string[]> } | null>(null)
   const loadFile = useCallback(
     (path: string) => {
-      let pending = files.current.get(path)
+      const key = `${sha}:${path}`
+      let pending = files.current.get(key)
       if (!pending) {
-        pending = window.prot.pulls.file(ref, path, detail.head.sha)
-        pending.catch(() => files.current.delete(path))
-        files.current.set(path, pending)
+        pending = window.prot.pulls.file(ref, path, sha)
+        pending.catch(() => files.current.delete(key))
+        files.current.set(key, pending)
       }
       return pending
     },
-    [ref, detail.head.sha]
+    [ref, sha]
   )
   const loadTree = useCallback(() => {
-    tree.current ??= window.prot.pulls.tree(ref, detail.head.sha)
-    tree.current.catch(() => (tree.current = null))
-    return tree.current
-  }, [ref, detail.head.sha])
+    if (tree.current?.sha !== sha) {
+      const paths = window.prot.pulls.tree(ref, sha)
+      paths.catch(() => (tree.current = null))
+      tree.current = { sha, paths }
+    }
+    return tree.current.paths
+  }, [ref, sha])
 
   const requestAi = useCallback(
     async (refresh: boolean) => {
@@ -126,6 +162,15 @@ function ReviewScreen({ detail, viewer, onRefetch }: { detail: PullDetail; viewe
     autoStarted.current = true
     void requestAi(false)
   }, [settings.autoAiGuide, keys.anthropic, requestAi])
+
+  // Once per head SHA, so a regenerated guide that still reads stale cannot loop.
+  const autoRefreshedFor = useRef<string | null>(null)
+  useEffect(() => {
+    if (!settings.autoRefreshStaleGuides || !keys.anthropic) return
+    if (drift.kind !== 'significant' || session.ai.status === 'loading' || autoRefreshedFor.current === sha) return
+    autoRefreshedFor.current = sha
+    void requestAi(true)
+  }, [settings.autoRefreshStaleGuides, keys.anthropic, drift.kind, session.ai.status, sha, requestAi])
 
   useEffect(() => {
     updateView({
@@ -243,6 +288,9 @@ function ReviewScreen({ detail, viewer, onRefetch }: { detail: PullDetail; viewe
             </p>
           </header>
 
+          {drift.kind === 'significant' && (
+            <StaleGuideNotice drift={drift} loading={session.ai.status === 'loading'} onRefresh={() => void requestAi(true)} />
+          )}
           {session.ai.status === 'failed' && (
             <AiNotice message={session.ai.message} onRetry={() => void requestAi(true)} />
           )}
@@ -256,7 +304,7 @@ function ReviewScreen({ detail, viewer, onRefetch }: { detail: PullDetail; viewe
 
         {session.ide.open && <IdeView path={session.ide.path} />}
       </div>
-      <ReviewDialog open={reviewOpen} onOpenChange={setReviewOpen} viewer={viewer} onSubmitted={onRefetch} />
+      <ReviewDialog open={reviewOpen} onOpenChange={setReviewOpen} viewer={viewer} onSubmitted={() => void refetch(null)} />
     </ReviewContext.Provider>
   )
 }
@@ -365,10 +413,10 @@ function GuideChip({ onRequest }: { onRequest: (refresh: boolean) => void }) {
           type="button"
           onClick={() => onRequest(ai)}
           aria-label={ai ? 'Regenerate AI guide' : 'Generate AI guide'}
-          title={ai ? 'Regenerate AI guide' : 'Generate AI guide'}
+          title={ai ? 'Regenerate the AI guide for this pull request' : 'Generate an AI guide for this pull request'}
           className={action}
         >
-          {ai ? <RefreshCw className="size-3" /> : <><Sparkles className="size-3" /> use ai</>}
+          {ai ? <WandSparkles className="size-3" /> : <><Sparkles className="size-3" /> use ai</>}
         </button>
       ) : (
         <button
@@ -380,6 +428,61 @@ function GuideChip({ onRequest }: { onRequest: (refresh: boolean) => void }) {
           add api key
         </button>
       )}
+    </div>
+  )
+}
+
+function reasonText(reason: DriftReason): string {
+  switch (reason.kind) {
+    case 'uncovered-file':
+      return `New ${classifyFile(reason.path)} file ${splitPath(reason.path).name} is not in any chapter yet.`
+    case 'removed-file':
+      return `${splitPath(reason.path).name} was in the guide and is no longer part of this pull request.`
+    case 'line-share':
+      return `${reason.lines} lines changed, against ${reason.covered} the guide covered.`
+  }
+}
+
+function StaleGuideNotice({
+  drift,
+  loading,
+  onRefresh
+}: {
+  drift: Extract<GuideDrift, { kind: 'significant' }>
+  loading: boolean
+  onRefresh: () => void
+}) {
+  const files = drift.changed.length + drift.added.length + drift.removed.length
+  const [reason, ...more] = drift.reasons
+  return (
+    <div role="status" className="pane flex shrink-0 items-center gap-3 py-2 pr-2 pl-3.5 font-mono text-[11.5px] leading-[18px]">
+      <GitCommitHorizontal aria-hidden className="size-3.5 shrink-0 text-modified" />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-foreground/85">
+          This PR changed since the guide was written
+          <span className="text-muted-foreground">
+            {' · '}
+            {files} {files === 1 ? 'file' : 'files'}, <span className="text-added">+{drift.additions}</span>{' '}
+            <span className="text-removed">−{drift.deletions}</span> since{' '}
+            <span className="text-command">{drift.sinceSha.slice(0, 7)}</span>
+          </span>
+        </p>
+        {reason && (
+          <p className="truncate text-muted-foreground">
+            {reasonText(reason)}
+            {more.length > 0 && ` (+${more.length} more)`}
+          </p>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={onRefresh}
+        disabled={loading}
+        className="flex h-7 shrink-0 items-center gap-1.5 rounded-full bg-primary px-3 font-sans text-[12px] font-medium text-primary-foreground shadow-raised transition-opacity hover:opacity-90 disabled:opacity-60 [&_svg]:size-3.5"
+      >
+        {loading ? <Loader2 className="animate-spin" /> : <WandSparkles />}
+        {loading ? 'Refreshing guide' : 'Refresh guide'}
+      </button>
     </div>
   )
 }

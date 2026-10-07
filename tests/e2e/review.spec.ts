@@ -151,3 +151,49 @@ test('chat widget takes an API key, swaps in the AI guide, and answers with the 
   const second = chats().at(-1)?.body as { output_config: { effort: string } }
   expect(second.output_config.effort).toBe('high')
 })
+
+test('a push while reading flags the stale AI guide in place, reaches the new file, and refreshes the guide on request', async () => {
+  const { page, github, anthropic } = h
+  const moduleKt = 'packages/mobile/modules/capy-share/android/src/main/java/ai/capy/share/CapyShareModule.kt'
+  const guideRequests = () => anthropic.requests.filter((r) => JSON.stringify(r.body).includes('json_schema')).length
+  await signIn()
+  await openSharePull()
+
+  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.getByRole('switch', { name: 'AI guide automatically' }).click()
+  await page.keyboard.press('Escape')
+  await page.getByRole('button', { name: 'Ask prot' }).click()
+  await page.getByLabel('Anthropic API key').fill('sk-ant-fixture')
+  await page.getByRole('button', { name: 'Save' }).click()
+  await page.getByRole('button', { name: 'Close chat' }).click()
+  await page.getByRole('button', { name: 'Generate AI guide', exact: true }).click()
+  const chapter = page.getByRole('tab', { name: /Stage and upload shared files/ })
+  await chapter.click()
+  await expect.poll(guideRequests).toBe(1)
+
+  github.push()
+  await page.getByRole('button', { name: 'Refresh pull requests' }).click()
+
+  const banner = page.getByRole('status').filter({ hasText: 'changed since the guide' })
+  await expect(banner).toContainText('2 files, +44 −0 since 9f3c2a1')
+  await expect(banner).toContainText('New core file share-queue.ts is not in any chapter yet.')
+  await expect(chapter).toHaveAttribute('aria-selected', 'true')
+  await page.getByRole('tabpanel').getByRole('button', { name: moduleKt, exact: true }).click()
+  await expect(page.getByRole('region', { name: moduleKt }).locator('header')).toContainText('changed since guide')
+  await shot('08-stale-guide-banner')
+
+  await page.getByRole('button', { name: `Open ${moduleKt} in IDE` }).first().click()
+  const ide = page.getByRole('region', { name: 'IDE' })
+  await expect(ide.getByRole('treeitem', { name: moduleKt })).toContainText('Δ guide')
+  await expect(ide).toHaveCSS('opacity', '1')
+  await shot('09-stale-guide-ide-tag')
+  await page.keyboard.press('Escape')
+
+  await page.getByRole('tab', { name: /New since guide/ }).click()
+  await expect(page.getByRole('region', { name: 'packages/mobile/src/share/share-queue.ts' })).toContainText('drainShareQueue')
+  await shot('10-new-since-guide')
+
+  await page.getByRole('button', { name: 'Refresh guide', exact: true }).click()
+  await expect.poll(guideRequests).toBe(2)
+  await expect(banner).toBeHidden()
+})
