@@ -1,6 +1,9 @@
 import { pullKey, type PullDetail, type PullRef, type ReviewComment, type ReviewInput } from '@shared/types'
 import type { AuthService } from './auth'
 
+// Patches for big PRs are large; keep only the most recently fetched pull requests in memory.
+const KEEP_DETAILS = 20
+
 export class PullService {
   private readonly details = new Map<string, PullDetail>()
 
@@ -13,7 +16,10 @@ export class PullService {
     const viewer = this.auth.user()
     if (!viewer) throw new Error('Not signed in to GitHub.')
     const detail = await this.auth.client().getPull(ref, viewer.login)
-    this.details.set(pullKey(ref), detail)
+    const key = pullKey(ref)
+    this.details.delete(key)
+    this.details.set(key, detail)
+    while (this.details.size > KEEP_DETAILS) this.details.delete(this.details.keys().next().value as string)
     return detail
   }
 
