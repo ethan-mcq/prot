@@ -40,8 +40,6 @@ const HAS_EFFORT: Record<AiModel, boolean> = {
   'claude-haiku-4-5': false
 }
 
-const STARTERS = ['Explain this chapter', 'What should I look at closely?', 'How does this flow connect?']
-
 const SELECTION_LIMIT = 4000
 
 function applyEvent(threads: Threads, event: ChatEvent): Threads {
@@ -92,7 +90,7 @@ function useMainSelection() {
 }
 
 export function ChatWidget() {
-  const { view, chatOpen, setChatOpen } = useViewStore()
+  const { view, questions, chatOpen, setChatOpen } = useViewStore()
   const { keys } = usePrefs()
   const [threads, setThreads] = useState<Threads>({})
   const [setup, setSetup] = useState(false)
@@ -169,7 +167,7 @@ export function ChatWidget() {
           <p className="shrink-0 truncate px-4 pb-1.5 font-mono text-[11px] text-muted-foreground" title={context ?? undefined}>
             {context ? `seeing: ${context}` : 'open a pull request so prot can see it'}
           </p>
-          <Messages turns={turns} onStarter={send} canStart={view.pull !== null} />
+          <Messages turns={turns} questions={view.pull ? questions : []} onAsk={send} />
           <Composer
             busy={streaming !== undefined}
             selection={selection}
@@ -227,7 +225,7 @@ function ModelPicker() {
   )
 }
 
-function Messages({ turns, onStarter, canStart }: { turns: Turn[]; onStarter: (text: string) => void; canStart: boolean }) {
+function Messages({ turns, questions, onAsk }: { turns: Turn[]; questions: string[]; onAsk: (text: string) => void }) {
   const ref = useRef<HTMLDivElement>(null)
   const last = turns[turns.length - 1]
   const lastLength = last?.content.length ?? 0
@@ -241,19 +239,17 @@ function Messages({ turns, onStarter, canStart }: { turns: Turn[]; onStarter: (t
 
   if (turns.length === 0) {
     return (
-      <div className="flex min-h-0 flex-1 flex-col justify-end px-4 pb-4 font-mono text-[13px] tracking-[0.03em]">
-        <p className="mb-2 text-muted-foreground/45">? What do you want to know about this PR</p>
-        <ol>
-          {STARTERS.map((starter, i) => (
-            <li key={starter}>
+      <div className="scroll-quiet flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-4 font-mono text-[12.5px] leading-[1.6] tracking-[0.02em]">
+        <ol aria-label="Suggested questions" className="mt-auto">
+          {questions.map((question, i) => (
+            <li key={question}>
               <button
                 type="button"
-                disabled={!canStart}
-                onClick={() => onStarter(starter)}
-                className="flex w-full gap-3 rounded-[6px] px-4 py-1.5 text-left text-foreground/85 transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+                onClick={() => onAsk(question)}
+                className="flex w-full gap-3 rounded-[6px] px-3 py-1.5 text-left text-foreground/85 transition-colors hover:bg-accent hover:text-foreground"
               >
-                <span className="text-muted-foreground">{i + 1}.</span>
-                {starter}
+                <span className="shrink-0 text-muted-foreground">{i + 1}.</span>
+                <span className="min-w-0">{question}</span>
               </button>
             </li>
           ))}

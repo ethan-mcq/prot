@@ -52,6 +52,7 @@ export async function startGitHub(): Promise<GitHubFixture> {
   const requests: Recorded[] = []
   const prPath = `/repos/${pr.pull.owner}/${pr.pull.repo}`
   let state = pr.openedState
+  const replies: ReturnType<typeof pr.reply>[] = []
 
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://fixture')
@@ -75,7 +76,14 @@ export async function startGitHub(): Promise<GitHubFixture> {
       const page = Number(url.searchParams.get('page') ?? '1')
       return json(res, 200, page === 1 ? state.files : [])
     }
-    if (p === `${prPath}/pulls/${pr.pull.number}/comments`) return json(res, 200, pr.reviewComments)
+    if (p === `${prPath}/pulls/${pr.pull.number}/comments`) return json(res, 200, [...pr.reviewComments, ...replies])
+    const replyTo = p.match(new RegExp(`^${prPath}/pulls/${pr.pull.number}/comments/(\\d+)/replies$`))
+    if (replyTo && req.method === 'POST') {
+      const created = pr.reply(Number(replyTo[1]), (body as { body: string }).body, 9100 + replies.length)
+      if (created === null) return json(res, 404, { message: 'Not Found' })
+      replies.push(created)
+      return json(res, 201, created)
+    }
     if (p === `${prPath}/pulls/${pr.pull.number}/reviews`) {
       if (req.method === 'POST') return json(res, 200, { id: 7002, state: 'APPROVED' })
       return json(res, 200, pr.reviews)
@@ -160,6 +168,11 @@ export const aiGuide = {
       summary: 'The app config loads the plugin and the TestFlight script allows provisioning updates.',
       files: ['packages/mobile/app.config.ts', 'packages/mobile/scripts/testflight.sh']
     }
+  ],
+  questions: [
+    'Can any app send an ACTION_SEND intent that MainActivity.onNewIntent passes to CapyShareModule.takeShare unchecked?',
+    'What happens to ShareInbox.push when two share intents arrive before the inbox drains?',
+    'Which test covers useShareSend when one CapyShare.upload call fails halfway through?'
   ]
 }
 

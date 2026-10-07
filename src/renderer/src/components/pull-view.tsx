@@ -84,7 +84,7 @@ function ReviewScreen({ initial, viewer }: { initial: PullDetail; viewer: string
   const [session, dispatch] = useReducer(reviewReducer, initial, initSession)
   const [reviewOpen, setReviewOpen] = useState(false)
   const { settings, keys } = usePrefs()
-  const { updateView } = useViewStore()
+  const { updateView, setQuestions } = useViewStore()
   const ref = initial.summary.ref
   const { detail, guide, drift } = session
   const sha = detail.head.sha
@@ -186,13 +186,17 @@ function ReviewScreen({ initial, viewer }: { initial: PullDetail; viewer: string
 
   useEffect(() => {
     updateView({
-      pull: { ref, title: detail.summary.title, author: detail.summary.author.login, body: detail.body },
+      pull: { ref, author: detail.summary.author.login },
       step,
       chapter: step.kind === 'chapter' ? (guide.chapters[step.index] ?? null) : null,
       flow: guide.flow
     })
   }, [updateView, ref, detail, guide, step.kind, session.step])
   useEffect(() => () => updateView(EMPTY_VIEW), [updateView])
+  useEffect(() => {
+    setQuestions(guide.questions)
+    return () => setQuestions([])
+  }, [setQuestions, guide.questions])
 
   useHotkeys(
     {
@@ -203,8 +207,8 @@ function ReviewScreen({ initial, viewer }: { initial: PullDetail; viewer: string
   )
 
   const review: Review = useMemo(
-    () => ({ detail, session, dispatch, loadFile, loadTree }),
-    [detail, session, loadFile, loadTree]
+    () => ({ detail, session, dispatch, loadFile, loadTree, refetch: () => void refetch(null) }),
+    [detail, session, loadFile, loadTree, refetch]
   )
 
   const reviewedCount = detail.files.filter((file) => isFileReviewed(session, file.path)).length

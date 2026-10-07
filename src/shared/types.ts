@@ -206,6 +206,7 @@ export type GuideOverview = {
 type GuideContent = {
   headSha: string
   overview: GuideOverview
+  questions: string[]
   flow: Flow
   chapters: Chapter[]
   symbols: Record<string, CodeSymbol>
@@ -282,7 +283,7 @@ export const DEFAULT_SETTINGS: Settings = {
 export type KeysState = { anthropic: boolean }
 
 export type ViewContext = {
-  pull: { ref: PullRef; title: string; author: string; body: string } | null
+  pull: { ref: PullRef; author: string } | null
   step: GuideStep | null
   chapter: Chapter | null
   flow: Flow | null

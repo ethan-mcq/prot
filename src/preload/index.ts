@@ -25,7 +25,8 @@ const api: ProtApi = {
     file: (ref, path, sha) => ipcRenderer.invoke(IPC.pullFile, ref, path, sha),
     tree: (ref, sha) => ipcRenderer.invoke(IPC.pullTree, ref, sha),
     submitReview: (ref, input) => ipcRenderer.invoke(IPC.pullReview, ref, input),
-    comment: (ref, body) => ipcRenderer.invoke(IPC.pullComment, ref, body)
+    comment: (ref, body) => ipcRenderer.invoke(IPC.pullComment, ref, body),
+    reply: (ref, commentId, body) => ipcRenderer.invoke(IPC.pullReply, ref, commentId, body)
   },
   guide: {
     story: (ref) => ipcRenderer.invoke(IPC.guideStory, ref),

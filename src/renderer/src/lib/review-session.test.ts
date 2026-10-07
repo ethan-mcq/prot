@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildHeuristicGuide, buildStoryGuide, parseAiGuide } from '@shared/guide'
 import { added, capySharePull, capyStoryIndex, capyStoryPull, KOTLIN_MODULE, pullWith, STORY, SWIFT_MODULE } from '@shared/guide/fixtures'
-import type { Chapter, DiffLine, FlowNode, Guide, PullDetail } from '@shared/types'
+import type { Chapter, DiffLine, FlowNode, Guide, PullDetail, ReviewComment } from '@shared/types'
 import { cardKey, initSession, isFileReviewed, reviewReducer, type ReviewSession } from './review-session'
 
 function guideWith(chapterCount: number): Guide {
@@ -16,6 +16,7 @@ function guideWith(chapterCount: number): Guide {
     source: 'heuristic',
     headSha: 'abc',
     overview: { risk: { level: 'low', reason: '' }, synopsis: '', points: [] },
+    questions: [],
     flow: { caption: '', nodes: [], edges: [] },
     chapters,
     symbols: {}
@@ -173,6 +174,34 @@ describe('the story guide arriving', () => {
       aiTitle: underAi.guide.chapters[0]?.title,
       aiSymbols: Object.keys(underAi.symbols).length
     }).toEqual({ swapped: 'takeShare enters through MainActivity.onNewIntent', stale: true, aiTitle: 'All of it', aiSymbols: 37 })
+  })
+
+  it('shows a posted reply at once and keeps the story guide when the same head is refetched', () => {
+    const reply: ReviewComment = {
+      id: 9100,
+      path: STORY.send,
+      line: 6,
+      side: 'RIGHT',
+      body: 'Sequential keeps the caption order.',
+      author: { login: 'ethan-mcq', avatarUrl: '' },
+      createdAt: '2026-10-07T09:00:00Z',
+      inReplyToId: 9001,
+      url: ''
+    }
+    let state = reviewReducer(initSession(capyStoryPull), { type: 'story/loaded', guide: story })
+    state = reviewReducer(state, { type: 'comment/added', comment: reply })
+    const optimistic = state.detail.reviewComments.map((comment) => comment.body)
+    state = reviewReducer(state, { type: 'detail/updated', detail: { ...capyStoryPull, reviewComments: [reply] }, reviewed: [] })
+    state = reviewReducer(state, { type: 'comment/added', comment: reply })
+    expect({
+      optimistic,
+      refetched: state.detail.reviewComments.map((comment) => comment.body),
+      first: state.guide.chapters[0]?.title
+    }).toEqual({
+      optimistic: ['Sequential keeps the caption order.'],
+      refetched: ['Sequential keeps the caption order.'],
+      first: 'takeShare enters through MainActivity.onNewIntent'
+    })
   })
 
   it('counts a file reviewed once every card showing its changes is', () => {

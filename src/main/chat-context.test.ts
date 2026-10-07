@@ -43,18 +43,34 @@ function detail(overrides: Partial<PullDetail> = {}): PullDetail {
 }
 
 describe('buildChatSystem', () => {
-  it('lists the PR file paths with status and line counts', () => {
+  it('describes the PR from its code only, listing file paths with status and line counts', () => {
     const system = buildChatSystem(detail())
-    expect(system).toContain('Title: Add retry to uploader')
-    expect(system).toContain('Size: +8 -2 across 2 files')
-    expect(system).toContain('M src/upload.ts (+4 -1)')
-    expect(system).toContain('A src/new.ts (+4 -1)')
+    expect(system.slice(system.indexOf('<pull_request>'))).toBe(
+      [
+        '<pull_request>',
+        'Author: ada',
+        'Branches: retry into main',
+        'Size: +8 -2 across 2 files',
+        'Files:',
+        'M src/upload.ts (+4 -1)',
+        'A src/new.ts (+4 -1)',
+        '</pull_request>'
+      ].join('\n')
+    )
   })
 
-  it('truncates a long description at 4000 characters', () => {
-    const system = buildChatSystem(detail({ body: 'x'.repeat(5_000) }))
-    expect(system).toContain(`${'x'.repeat(4_000)}\n[truncated 1000 more characters]`)
-    expect(system).not.toContain('x'.repeat(4_001))
+  it('keeps the PR title and description out of everything sent to Claude', () => {
+    const pull = detail({ body: 'Fixes the flaky zebra uploader.' })
+    const system = buildChatSystem(pull)
+    const messages = attachViewContext([{ role: 'user', content: 'What changed?' }], {
+      ...emptyContext,
+      pull: { ref: pull.summary.ref, author: 'ada' },
+      file: { path: 'src/upload.ts', patch: '@@ -1 +1 @@\n-a\n+b', visibleLines: null }
+    })
+    const sent = [system, ...messages.map((message) => message.content)].join('\n')
+    expect(sent).toContain('Open file: src/upload.ts')
+    expect(sent).not.toContain('flaky zebra uploader')
+    expect(sent).not.toContain('Add retry to uploader')
   })
 
   it('caps the file list and says how many were left out', () => {

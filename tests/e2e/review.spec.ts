@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { CHAT_REPLY, TEST_TOKEN } from '../fixtures/servers'
+import { aiGuide, CHAT_REPLY, TEST_TOKEN } from '../fixtures/servers'
 import { pull } from '../fixtures/share-pr'
 import { launch, type Harness } from './launch'
 
@@ -86,6 +86,16 @@ test('signs in, badges the dock, and walks the guide from a risk-first overview 
   await expect(page.getByRole('region', { name: 'uploads every shared item' })).toContainText('useShareSend')
   await page.getByRole('region', { name: 'uploads every shared item' }).scrollIntoViewIfNeeded()
   await shot('04b-section-tests')
+
+  const sendCard = page.getByRole('region', { name: 'useShareSend', exact: true })
+  await sendCard.evaluate((card) => {
+    const pane = card.closest('[aria-label="Storyline"]')
+    if (pane) pane.scrollTop += card.getBoundingClientRect().top - pane.getBoundingClientRect().top + 300
+  })
+  const paneTop = (await storyline.boundingBox())?.y ?? 0
+  await expect.poll(async () => Math.round(((await sendCard.locator('header').boundingBox())?.y ?? -1) - paneTop)).toBe(0)
+  await expect(sendCard.locator('header')).toContainText('useShareSend')
+  await shot('04d-sticky-header')
 })
 
 test('expands into the IDE, browses the whole repo, and submits an approval with an inline comment', async () => {
@@ -110,6 +120,22 @@ test('expands into the IDE, browses the whole repo, and submits an approval with
   await shot('05a-bugbot-homopolymer')
   await send.getByText('Finalize can bypass run failure hold').scrollIntoViewIfNeeded()
   await shot('05b-bugbot-finalize')
+
+  const reply = 'Sequential keeps the caption order; parallel can wait for a follow-up.'
+  const thread = send.getByRole('group', { name: 'Thread by kai' })
+  await expect(thread).toContainText('Should uploads run in parallel?')
+  await thread.getByRole('button', { name: 'Reply to kai' }).click()
+  await thread.getByRole('textbox', { name: 'Reply' }).fill(reply)
+  const sendReply = thread.getByRole('button', { name: 'Send reply' })
+  await expect(sendReply).toHaveCSS('opacity', '1')
+  await shot('05c-reply-composer')
+  await sendReply.click()
+  await expect(thread).toContainText(reply)
+  await expect(thread.getByRole('textbox', { name: 'Reply' })).toHaveCount(0)
+  await shot('05d-reply-posted')
+  expect(github.requests.filter((r) => r.method === 'POST' && r.path.includes('/replies'))).toEqual([
+    { method: 'POST', path: `/repos/${pull.owner}/${pull.repo}/pulls/${pull.number}/comments/9001/replies`, body: { body: reply } }
+  ])
   await send.getByRole('button', { name: 'Comment on line 6' }).click()
   await page.getByRole('textbox').last().fill('Parallel would be faster here.')
   await page.getByRole('button', { name: 'Add comment' }).click()
@@ -154,8 +180,12 @@ test('chat widget takes an API key, swaps in the AI guide, and answers with the 
   await expect(page.getByRole('tab', { name: /Stage and upload shared files/ })).toBeVisible()
   await page.getByRole('tab', { name: /Stage and upload shared files/ }).click()
 
-  await page.getByRole('textbox', { name: 'Message prot' }).fill('Where does sharing start?')
-  await page.keyboard.press('Enter')
+  const question = aiGuide.questions[0] as string
+  const suggested = page.getByRole('list', { name: 'Suggested questions' }).getByRole('button')
+  await expect(suggested.first()).toHaveText(`1.${question}`)
+  await expect(suggested).toHaveCount(aiGuide.questions.length)
+  await shot('07a-chat-questions')
+  await suggested.first().click()
   await expect(page.getByRole('log', { name: 'Conversation' })).toContainText(CHAT_REPLY)
   await shot('07-chat')
 
@@ -167,7 +197,8 @@ test('chat widget takes an API key, swaps in the AI guide, and answers with the 
   expect(guideRequest).not.toContain('share extension and Android share intent to a new or existing thread')
   expect(guideRequest).not.toContain('staged, uploaded, and sent to Capy threads')
   expect(sent).toContain('Stage and upload shared files')
-  expect(sent).toContain('Where does sharing start?')
+  expect(sent).toContain(question)
+  expect(sent).not.toContain('staged, uploaded, and sent to Capy threads')
   expect({ model: first.model, effort: first.output_config.effort }).toEqual({ model: 'claude-sonnet-5-5', effort: 'medium' })
 
   await page.getByRole('combobox', { name: 'Thinking effort' }).click()

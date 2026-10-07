@@ -4,12 +4,14 @@ import type {
   PullDetail,
   PullRef,
   PullSummary,
+  ReviewComment,
   ReviewInput
 } from '@shared/types'
 import {
   mergeBuckets,
   toPullDetail,
   toPullSummary,
+  toReviewComment,
   toUser,
   type RawFile,
   type RawPull,
@@ -134,6 +136,14 @@ export class GitHubClient {
       method: 'POST',
       body: { body }
     })
+  }
+
+  async reply(ref: PullRef, commentId: number, body: string): Promise<ReviewComment> {
+    const raw = await this.json<RawReviewComment>(`${repoPath(ref)}/pulls/${ref.number}/comments/${commentId}/replies`, {
+      method: 'POST',
+      body: { body }
+    })
+    return toReviewComment(raw)
   }
 
   private async search(bucket: PullBucket): Promise<PullSummary[]> {

@@ -14,6 +14,8 @@ export const EMPTY_VIEW: ViewContext = {
 type ViewStore = {
   view: ViewContext
   updateView: (patch: Partial<ViewContext>) => void
+  questions: string[]
+  setQuestions: (questions: string[]) => void
   chatOpen: boolean
   setChatOpen: (open: boolean) => void
 }
@@ -28,8 +30,12 @@ export function useViewStore(): ViewStore {
 
 export function ViewProvider({ children }: { children: ReactNode }) {
   const [view, setView] = useState<ViewContext>(EMPTY_VIEW)
+  const [questions, setQuestions] = useState<string[]>([])
   const [chatOpen, setChatOpen] = useState(false)
   const updateView = useCallback((patch: Partial<ViewContext>) => setView((prev) => ({ ...prev, ...patch })), [])
-  const value = useMemo(() => ({ view, updateView, chatOpen, setChatOpen }), [view, updateView, chatOpen])
+  const value = useMemo(
+    () => ({ view, updateView, questions, setQuestions, chatOpen, setChatOpen }),
+    [view, updateView, questions, chatOpen]
+  )
   return <ViewStoreContext.Provider value={value}>{children}</ViewStoreContext.Provider>
 }

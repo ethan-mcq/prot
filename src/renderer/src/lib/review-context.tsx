@@ -8,6 +8,7 @@ export type Review = {
   dispatch: Dispatch<ReviewAction>
   loadFile: (path: string) => Promise<string>
   loadTree: () => Promise<string[]>
+  refetch: () => void
 }
 
 export const ReviewContext = createContext<Review | null>(null)

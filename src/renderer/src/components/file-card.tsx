@@ -32,8 +32,8 @@ export function FileCard({ file }: { file: ChangedFile }) {
   }
 
   return (
-    <section aria-label={file.path} className="pane overflow-hidden" id={`file-${file.path}`}>
-      <header className={cn('flex h-10 items-center gap-2 pr-2 pl-3.5', open && 'border-b border-pane-border')}>
+    <section aria-label={file.path} className="pane overflow-clip" id={`file-${file.path}`}>
+      <header className={cn('sticky top-0 z-10 flex h-10 items-center gap-2 bg-card pr-2 pl-3.5', open && 'border-b border-pane-border')}>
         <FileIcon path={file.path} className="size-3.5" />
         <span className="flex min-w-0 font-mono text-[12px]" title={file.path}>
           {dir && <span className="truncate text-muted-foreground">{dir}/</span>}

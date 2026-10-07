@@ -16,6 +16,7 @@ import { numberChapters, planChapters, ROLE_INFO } from './chapters'
 import { joinWords, plural, reviewFiles } from './files'
 import { buildHeuristicGuide } from './heuristic'
 import { overviewFor } from './overview'
+import { predictQuestions } from './questions'
 import { classifyFile } from './roles'
 import { declsByPath } from './symbols'
 
@@ -564,6 +565,7 @@ export function buildStoryGuide(detail: PullDetail, index: CodeIndex): Guide {
     source: 'heuristic',
     headSha: detail.head.sha,
     overview: overviewFor(detail, all, symbols),
+    questions: predictQuestions({ files: reviewFiles(detail.files), chapters: all, symbols }),
     flow: storyFlow(chapters, symbols),
     chapters: all,
     symbols

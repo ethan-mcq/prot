@@ -514,6 +514,20 @@ export const reviewComments = [
   }
 ]
 
+export function reply(rootId: number, text: string, id: number) {
+  const root = reviewComments.find((comment) => comment.id === rootId)
+  if (root === undefined) return null
+  return {
+    ...root,
+    id,
+    body: text,
+    user: viewer,
+    created_at: '2026-10-07T09:00:00Z',
+    in_reply_to_id: rootId,
+    html_url: `https://github.com/${OWNER}/${REPO}/pull/${NUMBER}#discussion_r${id}`
+  }
+}
+
 export const reviews = [
   {
     id: 7001,

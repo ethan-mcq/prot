@@ -24,6 +24,7 @@ function isCachedGuide(value: unknown): value is Guide {
     typeof guide.symbols === 'object' &&
     guide.symbols !== null &&
     typeof (guide.overview as { synopsis?: unknown } | undefined)?.synopsis === 'string' &&
+    Array.isArray(guide.questions) &&
     typeof guide.coverage === 'object' &&
     guide.coverage !== null
   )

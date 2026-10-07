@@ -102,7 +102,7 @@ function Chips({ symbol, chapter }: { symbol: CodeSymbol; chapter: Chapter }) {
       title={`${verb} ${other.qualifiedName}${inSection(other) ? '' : ' (another section)'}`}
       className="flex h-5 max-w-56 shrink-0 items-center gap-1 rounded-full border border-pane-border px-1.5 font-mono text-[10.5px] text-muted-foreground transition-colors hover:border-frame hover:text-foreground"
     >
-      <span className="text-muted-foreground/70">{verb}</span>
+      <span className="shrink-0 whitespace-nowrap text-muted-foreground/70">{verb}</span>
       <span className="truncate text-foreground/80">{other.name}</span>
     </button>
   )
@@ -140,60 +140,58 @@ export function SymbolCard({ card, chapter }: { card: StoryCard; chapter: Chapte
   }
 
   return (
-    <section aria-label={displayName(symbol)} id={cardDomId(symbol.id)} className="pane scroll-mt-2 overflow-hidden">
-      <header className="flex h-10 items-center gap-2 pr-2 pl-3.5">
-        <KindBadge kind={symbol.kind} />
-        <span className="min-w-0 truncate font-mono text-[12.5px] font-medium" title={symbol.qualifiedName}>
-          {displayName(symbol)}
-        </span>
-        <span className="min-w-0 shrink truncate font-mono text-[11px] text-muted-foreground" title={symbol.path}>
-          {symbol.path.split('/').pop()}
-          {lineCount(symbol)}
-        </span>
-        <span className={cn('shrink-0 rounded-[4px] border border-current/25 px-1 font-mono text-[10px] leading-[15px]', tag.className)}>
-          {tag.label}
-        </span>
-        {entry && (
-          <span className="shrink-0 rounded-[4px] bg-command/12 px-1 font-mono text-[10px] leading-[15px] text-command">Entry</span>
-        )}
-        {card.excerpt !== null && (
-          <span className="shrink-0 font-mono text-[10px] text-muted-foreground" title="Only the lines that reach the story are shown">
-            excerpt
+    <section aria-label={displayName(symbol)} id={cardDomId(symbol.id)} className="pane scroll-mt-2 overflow-clip">
+      <div className={cn('sticky top-0 z-10 bg-card', open && 'border-b border-pane-border')}>
+        <header className="flex h-10 items-center gap-2 pr-2 pl-3.5">
+          <KindBadge kind={symbol.kind} />
+          <span className="min-w-0 truncate font-mono text-[12.5px] font-medium" title={symbol.qualifiedName}>
+            {displayName(symbol)}
           </span>
-        )}
-        {isChangedSinceGuide(session.drift, symbol.path) && <SinceGuideTag />}
-        <span className="flex-1" />
-        <label className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-[6px] px-1.5 py-1 font-mono text-[11.5px] text-muted-foreground transition-colors hover:bg-accent has-[[data-state=checked]]:text-added">
-          <Checkbox
-            checked={reviewed}
-            onCheckedChange={(value) => setReviewed(value === true)}
-            aria-label={`Reviewed ${symbol.qualifiedName}`}
-            className="size-3.5"
-          />
-          Reviewed
-        </label>
-        <PaneButton
-          aria-expanded={open}
-          aria-label={`${open ? 'Collapse' : 'Expand'} ${symbol.qualifiedName}`}
-          title={open ? 'Collapse' : 'Expand'}
-          onClick={() => setOpen(!open)}
-        >
-          {open ? <ChevronUp /> : <ChevronDown />}
-        </PaneButton>
-        <PaneButton
-          aria-label={`Open ${symbol.path} in IDE`}
-          title="Open in IDE"
-          onClick={() => dispatch({ type: 'ide/open', path: symbol.path })}
-        >
-          <Maximize2 />
-        </PaneButton>
-      </header>
-      <Chips symbol={symbol} chapter={chapter} />
-      {open && (
-        <div className="border-t border-pane-border">
-          <SymbolBody symbol={symbol} card={card} chapter={chapter} />
-        </div>
-      )}
+          <span className="min-w-0 shrink truncate font-mono text-[11px] text-muted-foreground" title={symbol.path}>
+            {symbol.path.split('/').pop()}
+            {lineCount(symbol)}
+          </span>
+          <span className={cn('shrink-0 rounded-[4px] border border-current/25 px-1 font-mono text-[10px] leading-[15px]', tag.className)}>
+            {tag.label}
+          </span>
+          {entry && (
+            <span className="shrink-0 rounded-[4px] bg-command/12 px-1 font-mono text-[10px] leading-[15px] text-command">Entry</span>
+          )}
+          {card.excerpt !== null && (
+            <span className="shrink-0 font-mono text-[10px] text-muted-foreground" title="Only the lines that reach the story are shown">
+              excerpt
+            </span>
+          )}
+          {isChangedSinceGuide(session.drift, symbol.path) && <SinceGuideTag />}
+          <span className="flex-1" />
+          <label className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-[6px] px-1.5 py-1 font-mono text-[11.5px] text-muted-foreground transition-colors hover:bg-accent has-[[data-state=checked]]:text-added">
+            <Checkbox
+              checked={reviewed}
+              onCheckedChange={(value) => setReviewed(value === true)}
+              aria-label={`Reviewed ${symbol.qualifiedName}`}
+              className="size-3.5"
+            />
+            Reviewed
+          </label>
+          <PaneButton
+            aria-expanded={open}
+            aria-label={`${open ? 'Collapse' : 'Expand'} ${symbol.qualifiedName}`}
+            title={open ? 'Collapse' : 'Expand'}
+            onClick={() => setOpen(!open)}
+          >
+            {open ? <ChevronUp /> : <ChevronDown />}
+          </PaneButton>
+          <PaneButton
+            aria-label={`Open ${symbol.path} in IDE`}
+            title="Open in IDE"
+            onClick={() => dispatch({ type: 'ide/open', path: symbol.path })}
+          >
+            <Maximize2 />
+          </PaneButton>
+        </header>
+        <Chips symbol={symbol} chapter={chapter} />
+      </div>
+      {open && <SymbolBody symbol={symbol} card={card} chapter={chapter} />}
     </section>
   )
 }

@@ -12,8 +12,10 @@ import { parseSettingsPatch } from './settings-validate'
 import {
   parseAnthropicKey,
   parseChatRequest,
+  parseCommentId,
   parseHttpsUrl,
   parsePullRef,
+  parseReplyBody,
   parseReviewInput,
   parseSha,
   parseToken
@@ -56,6 +58,9 @@ export function registerIpc(services: Services): void {
     if (typeof body !== 'string' || body.trim() === '') throw new Error('Comment must not be empty')
     return pulls.comment(parsePullRef(ref), body)
   })
+  ipcMain.handle(IPC.pullReply, (_event, ref: unknown, commentId: unknown, body: unknown) =>
+    pulls.reply(parsePullRef(ref), parseCommentId(commentId), parseReplyBody(body))
+  )
 
   ipcMain.handle(IPC.guideStory, (_event, ref: unknown) => code.story(parsePullRef(ref)))
   ipcMain.handle(IPC.guideAi, (_event, ref: unknown, refresh: unknown) =>

@@ -1,4 +1,4 @@
-import { pullKey, type PullDetail, type PullRef, type ReviewInput } from '@shared/types'
+import { pullKey, type PullDetail, type PullRef, type ReviewComment, type ReviewInput } from '@shared/types'
 import type { AuthService } from './auth'
 
 export class PullService {
@@ -39,6 +39,12 @@ export class PullService {
   async comment(ref: PullRef, body: string): Promise<void> {
     await this.auth.client().comment(ref, body)
     this.details.delete(pullKey(ref))
+  }
+
+  async reply(ref: PullRef, commentId: number, body: string): Promise<ReviewComment> {
+    const reply = await this.auth.client().reply(ref, commentId, body)
+    this.details.delete(pullKey(ref))
+    return reply
   }
 
   private isStale(detail: PullDetail): boolean {

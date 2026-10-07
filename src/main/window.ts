@@ -15,6 +15,8 @@ export function openInBrowser(url: string): void {
 }
 
 export function createMainWindow(): BrowserWindow {
+  // E2E drives a never-shown window so test runs don't pop up and take focus.
+  const hidden = process.env.PROT_HIDDEN_WINDOW === '1'
   const win = new BrowserWindow({
     width: 1440,
     height: 920,
@@ -27,11 +29,12 @@ export function createMainWindow(): BrowserWindow {
     webPreferences: {
       preload: join(import.meta.dirname, '../preload/index.cjs'),
       sandbox: true,
-      contextIsolation: true
+      contextIsolation: true,
+      backgroundThrottling: !hidden
     }
   })
 
-  win.once('ready-to-show', () => win.show())
+  if (!hidden) win.once('ready-to-show', () => win.show())
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     openInBrowser(url)

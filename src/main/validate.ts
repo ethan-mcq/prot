@@ -70,6 +70,18 @@ export function parsePullRef(raw: unknown): PullRef {
   return { owner, repo, number }
 }
 
+export function parseCommentId(raw: unknown): number {
+  const id = int(raw, 'comment id')
+  if (id < 1) throw new Error('comment id must be positive')
+  return id
+}
+
+export function parseReplyBody(raw: unknown): string {
+  const body = str(raw, 'Reply')
+  if (body.trim() === '') throw new Error('Reply must not be empty')
+  return body
+}
+
 export function parseSha(raw: unknown): string {
   const sha = str(raw, 'sha')
   if (!PATH_SAFE.test(sha)) throw new Error('Invalid commit sha')
@@ -222,9 +234,7 @@ function parseViewContext(raw: unknown): ViewContext {
     const fields = obj(value.pull, 'context pull')
     pull = {
       ref: parsePullRef(fields.ref),
-      title: str(fields.title, 'pull title'),
-      author: str(fields.author, 'pull author'),
-      body: str(fields.body, 'pull body')
+      author: str(fields.author, 'pull author')
     }
   }
   return {

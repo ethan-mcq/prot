@@ -11,6 +11,7 @@ import {
   type StoryCard
 } from '../types'
 import { numberChapters, planChapters, ROLE_INFO, type ChapterDraft } from './chapters'
+import { QUESTION_LIMIT } from './questions'
 import { guideCoverage } from './drift'
 import { reviewFiles, type ReviewFile } from './files'
 import { storyFlow } from './story'
@@ -25,7 +26,7 @@ const SYSTEM_PROMPT = `You write guided code reviews. A guided review walks a re
 
 You only see code: the indexed symbols, their code with diff markers (+ added, - removed), and file paths with line counts. Judge everything from the code.
 
-Return JSON with four parts.
+Return JSON with five parts.
 
 overview.risk: level is "low", "medium" or "high". Decide it from the code: the blast radius (how many callers and sections the change touches), data, schema or migration changes, auth or security paths, concurrency and shared state, deleted or changed public functions, and whether each section has tests for its changed symbols. reason is one sentence naming the concrete thing that drives the risk, such as what could break or which callers or data are affected.
 
@@ -36,6 +37,8 @@ caption: one plain sentence naming what the story map shows, such as "How a shar
 sections: the story, in reading order. Each section is one idea: an entry point and the code that serves it. List its cards in symbols, using only the exact symbol ids given, in reading order: entry first, then steps and helpers in call order, data types after the functions, tests last. You may merge, split or reorder the proposed sections. Every changed symbol belongs to exactly one section. Unchanged symbols may appear only as entry points. Title each section in a few plain words and write a summary of 1 to 2 plain sentences on what the code does and what a reviewer should check.
 
 files: titles and summaries for the files outside the story (config, build, docs, schema, lockfiles), grouped by exact path.
+
+questions: 3 to 5 questions a careful reviewer of this specific code would ask, most important first. Each names the concrete symbols, files, routes or services involved and is under 160 characters. Never ask anything generic. Look first for security risks and auth or permission checks, then downstream effects on callers and dependent services, the upstream callers and entry points that reach the change, data, schema or migration repercussions, concurrency and failure modes, and missing tests.
 
 Write plainly, without filler, hedging or Markdown headings. Some code is truncated or left out to fit.`
 
@@ -61,7 +64,8 @@ export const GUIDE_SCHEMA: Record<string, unknown> = strictObject({
   files: {
     type: 'array',
     items: strictObject({ ...(section.properties as object), files: { type: 'array', items: stringType } })
-  }
+  },
+  questions: { type: 'array', items: stringType }
 })
 
 function byPriority(a: ReviewFile, b: ReviewFile): number {
@@ -192,6 +196,19 @@ function parseOverview(raw: Record<string, unknown>, fallback: GuideOverview): G
     synopsis,
     points
   }
+}
+
+const MIN_QUESTIONS = 3
+const QUESTION_CHARS = 160
+
+function parseQuestions(raw: unknown, fallback: string[]): string[] {
+  const questions: string[] = []
+  for (const candidate of list(raw)) {
+    const question = text(candidate)
+    if (question === null || question.length > QUESTION_CHARS || questions.includes(question)) continue
+    questions.push(question)
+  }
+  return questions.length < MIN_QUESTIONS ? fallback : questions.slice(0, QUESTION_LIMIT)
 }
 
 type Placement = { chapter: Chapter; card: StoryCard }
@@ -349,6 +366,7 @@ export function parseAiGuide(raw: unknown, detail: PullDetail, story: Guide): Gu
     source: 'ai',
     headSha: detail.head.sha,
     overview,
+    questions: parseQuestions(value.questions, story.questions),
     flow: { ...flow, caption: text(value.caption) ?? flow.caption },
     chapters: all,
     symbols: story.symbols,

@@ -22,7 +22,12 @@ export async function launch(): Promise<Harness> {
   }
   const app = await electron.launch({
     args: ['out/main/index.js', `--user-data-dir=${userData}`],
-    env: { ...env, GITHUB_API_URL: github.url, ANTHROPIC_BASE_URL: anthropic.url }
+    env: {
+      ...env,
+      GITHUB_API_URL: github.url,
+      ANTHROPIC_BASE_URL: anthropic.url,
+      PROT_HIDDEN_WINDOW: process.env.PROT_HEADED === '1' ? '0' : '1'
+    }
   })
   const page = await app.firstWindow()
   return {

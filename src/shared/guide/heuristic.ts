@@ -3,6 +3,7 @@ import { numberChapters, planChapters } from './chapters'
 import { reviewFiles, type ReviewFile } from './files'
 import { buildFlow, chapterIndex } from './flow'
 import { overviewFor } from './overview'
+import { predictQuestions } from './questions'
 import { declsByPath } from './symbols'
 
 function inChapterOrder(files: ReviewFile[], chapters: Chapter[]): ReviewFile[] {
@@ -26,6 +27,7 @@ export function buildHeuristicGuide(detail: PullDetail): Guide {
     source: 'heuristic',
     headSha: detail.head.sha,
     overview: overviewFor(detail, chapters, {}),
+    questions: predictQuestions({ files, chapters, symbols: {} }),
     flow: buildFlow(inChapterOrder(files, chapters), decls, chapterIndex(chapters)),
     chapters,
     symbols: {}

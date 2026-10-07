@@ -7,6 +7,7 @@ import type {
   KeysState,
   PullDetail,
   PullRef,
+  ReviewComment,
   ReviewInput,
   Settings
 } from './types'
@@ -29,6 +30,7 @@ export interface ProtApi {
     tree(ref: PullRef, sha: string): Promise<string[]>
     submitReview(ref: PullRef, input: ReviewInput): Promise<void>
     comment(ref: PullRef, body: string): Promise<void>
+    reply(ref: PullRef, commentId: number, body: string): Promise<ReviewComment>
   }
   guide: {
     story(ref: PullRef): Promise<Guide>
@@ -63,6 +65,7 @@ export const IPC = {
   pullTree: 'pull:tree',
   pullReview: 'pull:review',
   pullComment: 'pull:comment',
+  pullReply: 'pull:reply',
   guideStory: 'guide:story',
   guideAi: 'guide:ai',
   aiChat: 'ai:chat',

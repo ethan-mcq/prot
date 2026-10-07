@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode, type Ref, type RefObject } from 'react'
-import { Loader2, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Loader2, Pencil, Plus, Reply, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { ChangedFile, DiffHunk, DiffLine, DraftComment, ReviewComment } from '@shared/types'
 import { lineAnchor, parsePatch } from '@shared/diff'
@@ -58,6 +58,8 @@ function buildRows(hunks: DiffHunk[], trailingGap: boolean): { rows: Row[]; oldS
   }
   return { rows, oldSide, newSide }
 }
+
+type Thread = { rootId: number; comments: ReviewComment[] }
 
 function threadKey(path: string, side: string, line: number): string {
   return `${path}:${side}:${line}`
@@ -161,29 +163,38 @@ export function DiffView({ file }: { file: ChangedFile }) {
       {comments.outdated.length > 0 && (
         <div className="border-t border-pane-border">
           <p className="px-4 pt-3 text-muted-foreground">Outdated comments</p>
-          <CommentThread comments={comments.outdated} />
+          {comments.outdated.map((thread) => (
+            <CommentThread key={thread.rootId} thread={thread} />
+          ))}
         </div>
       )}
     </div>
   )
 }
 
-export function useLineComments(path: string): { byLine: Map<string, ReviewComment[]>; outdated: ReviewComment[] } {
+// GitHub points every reply at its thread's root, so the root id names the thread.
+export function useLineComments(path: string): { byLine: Map<string, Thread[]>; outdated: Thread[] } {
   const { detail } = useReview()
   return useMemo(() => {
-    const byLine = new Map<string, ReviewComment[]>()
-    const roots = new Map<number, string>()
-    const outdated: ReviewComment[] = []
+    const threads = new Map<number, Thread>()
+    const byLine = new Map<string, Thread[]>()
+    const outdated: Thread[] = []
     for (const comment of detail.reviewComments) {
       if (comment.path !== path) continue
-      const parentKey = comment.inReplyToId === null ? undefined : roots.get(comment.inReplyToId)
-      const key = parentKey ?? (comment.line === null ? null : threadKey(comment.path, comment.side, comment.line))
-      if (key === null) {
-        outdated.push(comment)
+      const rootId = comment.inReplyToId ?? comment.id
+      const existing = threads.get(rootId)
+      if (existing) {
+        existing.comments.push(comment)
         continue
       }
-      roots.set(comment.id, key)
-      byLine.set(key, [...(byLine.get(key) ?? []), comment])
+      const thread: Thread = { rootId, comments: [comment] }
+      threads.set(rootId, thread)
+      if (comment.line === null) {
+        outdated.push(thread)
+        continue
+      }
+      const key = threadKey(comment.path, comment.side, comment.line)
+      byLine.set(key, [...(byLine.get(key) ?? []), thread])
     }
     return { byLine, outdated }
   }, [detail.reviewComments, path])
@@ -214,7 +225,7 @@ export function CommentableLine({
   path: string
   line: DiffLine
   tokens: Token[] | undefined
-  comments: Map<string, ReviewComment[]>
+  comments: Map<string, Thread[]>
   focusRef: RefObject<HTMLDivElement | null>
   marked?: boolean
 }) {
@@ -223,7 +234,7 @@ export function CommentableLine({
   const anchor = lineAnchor(line)
   const focus = session.focus?.path === path ? session.focus : null
   const focused = focus !== null && anchor !== null && anchor.side === focus.side && anchor.line === focus.line
-  const thread = anchor ? comments.get(threadKey(path, anchor.side, anchor.line)) : undefined
+  const threads = anchor ? (comments.get(threadKey(path, anchor.side, anchor.line)) ?? []) : []
   const drafts = anchor ? session.drafts.filter((d) => d.path === path && d.side === anchor.side && d.line === anchor.line) : []
   return (
     <div>
@@ -235,7 +246,9 @@ export function CommentableLine({
         tokens={tokens}
         onComment={anchor ? () => setComposing(true) : undefined}
       />
-      {thread && <CommentThread comments={thread} />}
+      {threads.map((thread) => (
+        <CommentThread key={thread.rootId} thread={thread} />
+      ))}
       {drafts.map((draft) => (
         <DraftCard key={draft.id} draft={draft} />
       ))}
@@ -344,22 +357,96 @@ function GapButton({
   )
 }
 
-function CommentThread({ comments }: { comments: ReviewComment[] }) {
+function CommentThread({ thread }: { thread: Thread }) {
+  const [replying, setReplying] = useState(false)
+  const author = thread.comments[0]?.author.login ?? 'thread'
   return (
-    <div className="border-y border-pane-border bg-muted/50 py-2.5 pr-4 pl-[86px] font-sans">
-      <div className="max-w-2xl space-y-3 rounded-[8px] border border-pane-border bg-card p-3">
-        {comments.map((comment) => (
-          <div key={comment.id} className="flex gap-2.5">
-            <UserAvatar user={comment.author} className="mt-0.5" />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-baseline gap-2 font-mono text-[11px]">
-                <span className="font-medium">{comment.author.login}</span>
-                <span className="text-muted-foreground">{relativeTime(comment.createdAt)}</span>
+    <div role="group" aria-label={`Thread by ${author}`} className="border-y border-pane-border bg-muted/50 py-2.5 pr-4 pl-[86px] font-sans">
+      <div className="max-w-2xl rounded-[8px] border border-pane-border bg-card">
+        <div className="space-y-3 p-3">
+          {thread.comments.map((comment) => (
+            <div key={comment.id} className="flex gap-2.5">
+              <UserAvatar user={comment.author} className="mt-0.5" />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-baseline gap-2 font-mono text-[11px]">
+                  <span className="font-medium">{comment.author.login}</span>
+                  <span className="text-muted-foreground">{relativeTime(comment.createdAt)}</span>
+                </div>
+                <Markdown github className="text-[13px] leading-5">{comment.body}</Markdown>
               </div>
-              <Markdown github className="text-[13px] leading-5">{comment.body}</Markdown>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
+        <div className="border-t border-pane-border px-3 py-2">
+          {replying ? (
+            <ReplyComposer rootId={thread.rootId} onClose={() => setReplying(false)} />
+          ) : (
+            <Button
+              variant="ghost"
+              size="xs"
+              aria-label={`Reply to ${author}`}
+              onClick={() => setReplying(true)}
+              className="-ml-1.5 font-mono text-[11.5px] text-muted-foreground"
+            >
+              <Reply /> Reply
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ReplyComposer({ rootId, onClose }: { rootId: number; onClose: () => void }) {
+  const { detail, dispatch, refetch } = useReview()
+  const [body, setBody] = useState('')
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const ready = body.trim().length > 0 && !sending
+
+  async function send() {
+    if (!ready) return
+    setSending(true)
+    setError(null)
+    try {
+      const comment = await window.prot.pulls.reply(detail.summary.ref, rootId, body.trim())
+      dispatch({ type: 'comment/added', comment })
+      onClose()
+      refetch()
+    } catch (failure) {
+      setError(errorMessage(failure))
+      setSending(false)
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <Textarea
+        autoFocus
+        aria-label="Reply"
+        placeholder="Reply to this thread. It posts right away."
+        value={body}
+        disabled={sending}
+        onChange={(event) => setBody(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') onClose()
+          if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) void send()
+        }}
+        className="min-h-16 bg-background text-[13px]"
+      />
+      {error && (
+        <p role="alert" className="font-mono text-[11.5px] text-destructive">
+          ! {error}
+        </p>
+      )}
+      <div className="flex justify-end gap-2">
+        <Button variant="ghost" size="sm" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button size="sm" disabled={!ready} onClick={() => void send()}>
+          {sending && <Loader2 className="animate-spin" />}
+          Send reply
+        </Button>
       </div>
     </div>
   )

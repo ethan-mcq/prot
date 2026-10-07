@@ -101,6 +101,38 @@ describe('parseAiGuide', () => {
     })
   })
 
+  it('keeps up to 5 unique questions under 160 characters and falls back to the story questions when fewer than 3 survive', () => {
+    const asked = [
+      '  Can any app send an ACTION_SEND intent that CapyShareModule.takeShare stages?  ',
+      '',
+      42,
+      'Can any app send an ACTION_SEND intent that CapyShareModule.takeShare stages?',
+      `Does ShareInbox.push ${'really '.repeat(30)}hold up?`,
+      'What happens when ShareInbox.push runs from two intents at once?',
+      'Which test covers normalizeText cutting at MAX_MESSAGE_LENGTH?',
+      'Does appendMessage still send text longer than MAX_MESSAGE_LENGTH?',
+      'Who reads CapyShare.takeShare when the native module is missing?',
+      'Is a sixth question ever kept?'
+    ]
+    const kept = parseAiGuide({ ...raw, questions: asked }, capyStoryPull, story).questions
+    const fallback = parseAiGuide({ ...raw, questions: ['What is this PR about?', 'What is this PR about?', ''] }, capyStoryPull, story).questions
+    expect({ kept, fallback }).toEqual({
+      kept: [
+        'Can any app send an ACTION_SEND intent that CapyShareModule.takeShare stages?',
+        'What happens when ShareInbox.push runs from two intents at once?',
+        'Which test covers normalizeText cutting at MAX_MESSAGE_LENGTH?',
+        'Does appendMessage still send text longer than MAX_MESSAGE_LENGTH?',
+        'Who reads CapyShare.takeShare when the native module is missing?'
+      ],
+      fallback: [
+        'What else calls normalizeText, and does the change to it break them?',
+        'Who can call MainActivity.onNewIntent, and does CapyShareModule.takeShare change what it returns or who is allowed?',
+        'What covers normalizeText now that it has no tests in this PR?',
+        'Who can call appendMessage, and does normalizeText change what it returns or who is allowed?'
+      ]
+    })
+  })
+
   it.each([
     [null, /not a JSON object/],
     ['{"overview": ', /not valid JSON/],

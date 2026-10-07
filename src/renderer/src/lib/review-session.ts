@@ -10,7 +10,8 @@ import type {
   Guide,
   GuideDrift,
   GuideStep,
-  PullDetail
+  PullDetail,
+  ReviewComment
 } from '@shared/types'
 import { pullKey } from '@shared/types'
 
@@ -44,6 +45,7 @@ export type ReviewAction =
   | { type: 'ai/failed'; message: string }
   | { type: 'story/loaded'; guide: Guide }
   | { type: 'detail/updated'; detail: PullDetail; reviewed: string[] }
+  | { type: 'comment/added'; comment: ReviewComment }
   | { type: 'reviewed/set'; keys: string[]; reviewed: boolean }
   | { type: 'draft/add'; path: string; line: DiffLine; body: string }
   | { type: 'draft/edit'; id: string; body: string }
@@ -139,9 +141,9 @@ export function reviewReducer(state: ReviewSession, action: ReviewAction): Revie
       return { ...state, ...next, symbols, step: clampStep(state.step, next.guide) }
     }
     case 'detail/updated': {
-      const written = state.written.source === 'heuristic' ? buildHeuristicGuide(action.detail) : state.written
-      const next = present(written, action.detail)
       const pushed = action.detail.head.sha !== state.detail.head.sha
+      const written = pushed && state.written.source === 'heuristic' ? buildHeuristicGuide(action.detail) : state.written
+      const next = present(written, action.detail)
       return {
         ...state,
         ...next,
@@ -149,6 +151,11 @@ export function reviewReducer(state: ReviewSession, action: ReviewAction): Revie
         step: clampStep(state.step, next.guide),
         reviewed: pushed ? action.reviewed : state.reviewed
       }
+    }
+    case 'comment/added': {
+      const comments = state.detail.reviewComments
+      if (comments.some((comment) => comment.id === action.comment.id)) return state
+      return { ...state, detail: { ...state.detail, reviewComments: [...comments, action.comment] } }
     }
     case 'reviewed/set': {
       const others = state.reviewed.filter((key) => !action.keys.includes(key))
