@@ -1,4 +1,4 @@
-import { ipcMain, shell } from 'electron'
+import { clipboard, ipcMain, shell } from 'electron'
 import { IPC } from '@shared/ipc'
 import type { AuthService } from './auth'
 import type { ChatService } from './chat'
@@ -99,4 +99,5 @@ export function registerIpc(services: Services): void {
   })
 
   ipcMain.handle(IPC.openExternal, (_event, url: unknown) => shell.openExternal(parseHttpsUrl(url)))
+  ipcMain.handle(IPC.copyLink, (_event, url: unknown) => clipboard.writeText(parseHttpsUrl(url)))
 }

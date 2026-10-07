@@ -51,7 +51,8 @@ const api: ProtApi = {
     get: () => ipcRenderer.invoke(IPC.keysGet),
     setAnthropic: (key) => ipcRenderer.invoke(IPC.keysSetAnthropic, key)
   },
-  openExternal: (url) => ipcRenderer.invoke(IPC.openExternal, url)
+  openExternal: (url) => ipcRenderer.invoke(IPC.openExternal, url),
+  copyLink: (url) => ipcRenderer.invoke(IPC.copyLink, url)
 }
 
 contextBridge.exposeInMainWorld('prot', api)

@@ -6,6 +6,7 @@ import {
   ExternalLink,
   GitCommitHorizontal,
   GitPullRequest,
+  Link,
   Loader2,
   RefreshCw,
   ScrollText,
@@ -249,6 +250,7 @@ function ReviewScreen({ initial, viewer }: { initial: PullDetail; viewer: string
           >
             <ExternalLink />
           </TitleButton>
+          <CopyLinkButton url={detail.summary.url} />
           <button
             type="button"
             onClick={() => setReviewOpen(true)}
@@ -591,5 +593,23 @@ function PullSkeleton() {
         </div>
       </div>
     </div>
+  )
+}
+
+function CopyLinkButton({ url }: { url: string }) {
+  const [copied, setCopied] = useState(false)
+  useEffect(() => {
+    if (!copied) return
+    const timer = setTimeout(() => setCopied(false), 1500)
+    return () => clearTimeout(timer)
+  }, [copied])
+  return (
+    <TitleButton
+      aria-label={copied ? 'Link copied' : 'Copy link'}
+      title={copied ? 'Copied' : 'Copy pull request link'}
+      onClick={() => void window.prot.copyLink(url).then(() => setCopied(true))}
+    >
+      {copied ? <Check className="text-added" /> : <Link />}
+    </TitleButton>
   )
 }

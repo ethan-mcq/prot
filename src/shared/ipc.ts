@@ -57,6 +57,7 @@ export interface ProtApi {
     setAnthropic(key: string | null): Promise<KeysState>
   }
   openExternal(url: string): Promise<void>
+  copyLink(url: string): Promise<void>
 }
 
 export const IPC = {
@@ -86,5 +87,6 @@ export const IPC = {
   promptsSetLive: 'prompts:set-live',
   keysGet: 'keys:get',
   keysSetAnthropic: 'keys:set-anthropic',
-  openExternal: 'open-external'
+  openExternal: 'open-external',
+  copyLink: 'copy-link'
 } as const
