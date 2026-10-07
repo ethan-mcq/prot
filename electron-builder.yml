@@ -1,0 +1,13 @@
+appId: dev.ethanmcq.prot
+productName: prot
+directories:
+  output: release
+  buildResources: resources
+files:
+  - out/**/*
+  - package.json
+mac:
+  icon: resources/icon.icns
+  category: public.app-category.developer-tools
+  target: dir
+  identity: null
