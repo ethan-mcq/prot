@@ -22,7 +22,7 @@ const SYMBOL_CAP = 12_000
 const PATCH_CAP = 20_000
 const MIN_ENTRY = 600
 
-const SYSTEM_PROMPT = `You write guided code reviews. A guided review walks a reviewer through a pull request as a story of code: it starts where execution enters the changed code and follows it down through the helpers, data types and tests.
+export const SYSTEM_PROMPT = `You write guided code reviews. A guided review walks a reviewer through a pull request as a story of code: it starts where execution enters the changed code and follows it down through the helpers, data types and tests.
 
 You only see code: the indexed symbols, their code with diff markers (+ added, - removed), and file paths with line counts. Judge everything from the code.
 
@@ -113,7 +113,8 @@ function cardLine(card: StoryCard, guide: Guide): string {
 export function buildGuidePrompt(
   detail: PullDetail,
   story: Guide,
-  heads: Record<string, string>
+  heads: Record<string, string>,
+  system: string
 ): { system: string; user: string } {
   const files = reviewFiles(detail.files).sort(byPriority)
   const storyChapters = story.chapters.filter((chapter) => chapter.cards.length > 0)
@@ -163,7 +164,7 @@ export function buildGuidePrompt(
     ...leftovers.map(describeFile),
     ...patches
   ]
-  return { system: SYSTEM_PROMPT, user: sections.join('\n') }
+  return { system, user: sections.join('\n') }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -329,7 +330,7 @@ function fileFlow(story: Guide, chapters: Chapter[]): Guide['flow'] {
   return { ...story.flow, nodes }
 }
 
-export function parseAiGuide(raw: unknown, detail: PullDetail, story: Guide): Guide {
+export function parseAiGuide(raw: unknown, detail: PullDetail, story: Guide, promptHash: string): Guide {
   let value = raw
   if (typeof raw === 'string') {
     try {
@@ -370,6 +371,7 @@ export function parseAiGuide(raw: unknown, detail: PullDetail, story: Guide): Gu
     flow: { ...flow, caption: text(value.caption) ?? flow.caption },
     chapters: all,
     symbols: story.symbols,
-    coverage: guideCoverage(detail)
+    coverage: guideCoverage(detail),
+    promptHash
   }
 }

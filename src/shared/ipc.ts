@@ -11,6 +11,7 @@ import type {
   ReviewInput,
   Settings
 } from './types'
+import type { PromptLibrary, PromptVersion } from './prompts'
 
 export interface ProtApi {
   auth: {
@@ -45,6 +46,12 @@ export interface ProtApi {
     get(): Promise<Settings>
     set(patch: Partial<Settings>): Promise<Settings>
   }
+  prompts: {
+    get(): Promise<PromptLibrary>
+    save(text: string): Promise<{ library: PromptLibrary; version: PromptVersion }>
+    rename(hash: string, name: string): Promise<PromptLibrary>
+    setLive(hash: string): Promise<PromptLibrary>
+  }
   keys: {
     get(): Promise<KeysState>
     setAnthropic(key: string | null): Promise<KeysState>
@@ -73,6 +80,10 @@ export const IPC = {
   aiEvent: 'ai:event',
   settingsGet: 'settings:get',
   settingsSet: 'settings:set',
+  promptsGet: 'prompts:get',
+  promptsSave: 'prompts:save',
+  promptsRename: 'prompts:rename',
+  promptsSetLive: 'prompts:set-live',
   keysGet: 'keys:get',
   keysSetAnthropic: 'keys:set-anthropic',
   openExternal: 'open-external'

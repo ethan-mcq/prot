@@ -113,7 +113,7 @@ describe('a pull request update while reading', () => {
       files: [{ title: 'Native share module', summary: '', files: [KOTLIN_MODULE, SWIFT_MODULE] }]
     }
     const story = buildHeuristicGuide(capySharePull)
-    let state = reviewReducer(initSession(capySharePull), { type: 'ai/loaded', guide: parseAiGuide(raw, capySharePull, story) })
+    let state = reviewReducer(initSession(capySharePull), { type: 'ai/loaded', guide: parseAiGuide(raw, capySharePull, story, 'd1a090fa9228') })
     state = reviewReducer(state, { type: 'step/go', index: 2 })
     state = reviewReducer(state, { type: 'ide/open', path: KOTLIN_MODULE })
     state = reviewReducer(state, { type: 'reviewed/set', keys: [KOTLIN_MODULE], reviewed: true })
@@ -164,7 +164,8 @@ describe('the story guide arriving', () => {
       guide: parseAiGuide(
         { overview: { synopsis: 'x' }, sections: [{ title: 'All of it', symbols: [onNewIntent] }], files: [] },
         capyStoryPull,
-        story
+        story,
+        'd1a090fa9228'
       )
     })
     const underAi = reviewReducer(ai, { type: 'story/loaded', guide: story })

@@ -5,6 +5,7 @@ import type { ChatService } from './chat'
 import type { CodeIndexService } from './code-index/service'
 import type { GuideService } from './guide-ai'
 import type { InboxPoller } from './poller'
+import type { PromptStore } from './prompt-store'
 import type { PullService } from './pulls'
 import type { SecretsStore } from './secrets'
 import type { SettingsStore } from './settings'
@@ -14,6 +15,9 @@ import {
   parseChatRequest,
   parseCommentId,
   parseHttpsUrl,
+  parsePromptHash,
+  parsePromptName,
+  parsePromptText,
   parsePullRef,
   parseReplyBody,
   parseReviewInput,
@@ -30,10 +34,11 @@ export type Services = {
   chat: ChatService
   settings: SettingsStore
   secrets: SecretsStore
+  prompts: PromptStore
 }
 
 export function registerIpc(services: Services): void {
-  const { auth, poller, pulls, guide, code, chat, settings, secrets } = services
+  const { auth, poller, pulls, guide, code, chat, settings, secrets, prompts } = services
 
   ipcMain.handle(IPC.authGet, () => auth.get())
   ipcMain.handle(IPC.authGh, () => auth.signInWithGh())
@@ -79,6 +84,13 @@ export function registerIpc(services: Services): void {
   ipcMain.handle(IPC.settingsSet, (_event, patch: unknown) =>
     settings.set(parseSettingsPatch(patch))
   )
+
+  ipcMain.handle(IPC.promptsGet, () => prompts.get())
+  ipcMain.handle(IPC.promptsSave, (_event, text: unknown) => prompts.save(parsePromptText(text)))
+  ipcMain.handle(IPC.promptsRename, (_event, hash: unknown, name: unknown) =>
+    prompts.rename(parsePromptHash(hash), parsePromptName(name))
+  )
+  ipcMain.handle(IPC.promptsSetLive, (_event, hash: unknown) => prompts.setLive(parsePromptHash(hash)))
 
   ipcMain.handle(IPC.keysGet, async () => ({ anthropic: await secrets.hasAnthropicKey() }))
   ipcMain.handle(IPC.keysSetAnthropic, async (_event, key: unknown) => {

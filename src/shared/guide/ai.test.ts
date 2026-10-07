@@ -4,6 +4,7 @@ import { capyStoryIndex, capyStoryPull, changed, pullWith, STORY } from './fixtu
 import { buildGuidePrompt, buildStoryGuide, GUIDE_SCHEMA, parseAiGuide } from './index'
 
 const story = buildStoryGuide(capyStoryPull, capyStoryIndex)
+const PROMPT_HASH = 'd1a090fa9228'
 const sym = (path: string, name: string) => `${path}#${name}`
 
 function outline(guide: Guide): string[] {
@@ -39,7 +40,7 @@ describe('parseAiGuide', () => {
   }
 
   it('drops unknown ids, keeps each changed symbol once, brings entries along, and re-appends missed symbols where the story put them', () => {
-    const guide = parseAiGuide(raw, capyStoryPull, story)
+    const guide = parseAiGuide(raw, capyStoryPull, story, PROMPT_HASH)
     expect({ source: guide.source, headSha: guide.headSha, outline: outline(guide) }).toEqual({
       source: 'ai',
       headSha: 'head123',
@@ -89,11 +90,12 @@ describe('parseAiGuide', () => {
   })
 
   it('keeps a known risk level and falls back to the estimated risk for an unknown one', () => {
-    const unknown = parseAiGuide(raw, capyStoryPull, story).overview
+    const unknown = parseAiGuide(raw, capyStoryPull, story, PROMPT_HASH).overview
     const known = parseAiGuide(
       { ...raw, overview: { ...raw.overview, risk: { level: 'high', reason: 'Every share now goes through takeShare.' } } },
       capyStoryPull,
-      story
+      story,
+      PROMPT_HASH
     ).overview
     expect({ unknown, known: known.risk }).toEqual({
       unknown: { risk: story.overview.risk, synopsis: 'Shares items from other apps into a thread.', points: ['Native intake'] },
@@ -114,8 +116,8 @@ describe('parseAiGuide', () => {
       'Who reads CapyShare.takeShare when the native module is missing?',
       'Is a sixth question ever kept?'
     ]
-    const kept = parseAiGuide({ ...raw, questions: asked }, capyStoryPull, story).questions
-    const fallback = parseAiGuide({ ...raw, questions: ['What is this PR about?', 'What is this PR about?', ''] }, capyStoryPull, story).questions
+    const kept = parseAiGuide({ ...raw, questions: asked }, capyStoryPull, story, PROMPT_HASH).questions
+    const fallback = parseAiGuide({ ...raw, questions: ['What is this PR about?', 'What is this PR about?', ''] }, capyStoryPull, story, PROMPT_HASH).questions
     expect({ kept, fallback }).toEqual({
       kept: [
         'Can any app send an ACTION_SEND intent that CapyShareModule.takeShare stages?',
@@ -141,7 +143,7 @@ describe('parseAiGuide', () => {
     [{ overview: { risk: { level: 'low', reason: 'r' } }, sections: [] }, /overview\.synopsis/],
     [{ overview: { synopsis: 'x' }, sections: [{ title: 'Made up', symbols: ['nope.ts#x'] }] }, /none of the changed symbols/]
   ])('rejects unusable output %#', (input, message) => {
-    expect(() => parseAiGuide(input, capyStoryPull, story)).toThrow(message)
+    expect(() => parseAiGuide(input, capyStoryPull, story, PROMPT_HASH)).toThrow(message)
   })
 })
 
@@ -170,7 +172,7 @@ describe('GUIDE_SCHEMA', () => {
 
 describe('buildGuidePrompt', () => {
   it('sends the story and its code with diff markers, and never the PR title or description', () => {
-    const { system, user } = buildGuidePrompt(capyStoryPull, story, {})
+    const { system, user } = buildGuidePrompt(capyStoryPull, story, {}, 'You write guided code reviews.')
     const sent = `${system}\n${user}`
     expect({
       title: sent.includes('Share to Capy from other apps'),
@@ -190,7 +192,7 @@ describe('buildGuidePrompt', () => {
     files.push(changed('package-lock.json', 'modified', ['@@ -1,1 +1,1 @@', '-"a": 1', '+"a": 2']))
     files.push({ ...changed('assets/logo.png', 'added', []), patch: null })
     const detail = pullWith(files)
-    const { user } = buildGuidePrompt(detail, buildStoryGuide(detail, { headSha: 'head123', symbols: [], skipped: [] }), {})
+    const { user } = buildGuidePrompt(detail, buildStoryGuide(detail, { headSha: 'head123', symbols: [], skipped: [] }), {}, 'You write guided code reviews.')
 
     expect(user.length).toBeLessThan(185_000)
     for (const file of files) expect(user).toContain(file.path)

@@ -214,7 +214,7 @@ type GuideContent = {
 
 export type Guide =
   | (GuideContent & { source: 'heuristic' })
-  | (GuideContent & { source: 'ai'; coverage: GuideCoverage })
+  | (GuideContent & { source: 'ai'; coverage: GuideCoverage; promptHash: string })
 
 export type DriftReason =
   | { kind: 'uncovered-file'; path: string }

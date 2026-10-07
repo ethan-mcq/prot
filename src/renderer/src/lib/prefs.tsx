@@ -1,12 +1,14 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
+import type { PromptLibrary } from '@shared/prompts'
 import type { KeysState, Settings } from '@shared/types'
 
-type Prefs = {
-  settings: Settings
-  keys: KeysState
+type Loaded = { settings: Settings; keys: KeysState; prompts: PromptLibrary }
+
+type Prefs = Loaded & {
   resolvedTheme: 'light' | 'dark'
   updateSettings: (patch: Partial<Settings>) => Promise<void>
   setAnthropicKey: (key: string | null) => Promise<void>
+  setPrompts: (prompts: PromptLibrary) => void
 }
 
 const PrefsContext = createContext<Prefs | null>(null)
@@ -31,12 +33,12 @@ function useSystemDark(): boolean {
 }
 
 export function PrefsProvider({ children }: { children: ReactNode }) {
-  const [loaded, setLoaded] = useState<{ settings: Settings; keys: KeysState } | null>(null)
+  const [loaded, setLoaded] = useState<Loaded | null>(null)
   const systemDark = useSystemDark()
 
   useEffect(() => {
-    Promise.all([window.prot.settings.get(), window.prot.keys.get()]).then(([settings, keys]) =>
-      setLoaded({ settings, keys })
+    Promise.all([window.prot.settings.get(), window.prot.keys.get(), window.prot.prompts.get()]).then(([settings, keys, prompts]) =>
+      setLoaded({ settings, keys, prompts })
     )
   }, [])
 
@@ -58,9 +60,13 @@ export function PrefsProvider({ children }: { children: ReactNode }) {
     setLoaded((prev) => (prev ? { ...prev, keys } : prev))
   }, [])
 
+  const setPrompts = useCallback((prompts: PromptLibrary) => {
+    setLoaded((prev) => (prev ? { ...prev, prompts } : prev))
+  }, [])
+
   if (!loaded) return null
   return (
-    <PrefsContext.Provider value={{ ...loaded, resolvedTheme, updateSettings, setAnthropicKey }}>
+    <PrefsContext.Provider value={{ ...loaded, resolvedTheme, updateSettings, setAnthropicKey, setPrompts }}>
       {children}
     </PrefsContext.Provider>
   )

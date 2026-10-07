@@ -13,7 +13,8 @@ const aiGuide = parseAiGuide(
     files: [{ title: 'Native share module', summary: '', files: [KOTLIN_MODULE, SWIFT_MODULE] }]
   },
   capySharePull,
-  buildHeuristicGuide(capySharePull)
+  buildHeuristicGuide(capySharePull),
+  'd1a090fa9228'
 )
 
 function pushed(edit: (files: ChangedFile[]) => ChangedFile[]): PullDetail {

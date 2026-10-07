@@ -1,6 +1,6 @@
 export { classifyFile } from './roles'
 export { buildHeuristicGuide } from './heuristic'
-export { buildGuidePrompt, GUIDE_SCHEMA, parseAiGuide, symbolCode } from './ai'
+export { buildGuidePrompt, GUIDE_SCHEMA, parseAiGuide, symbolCode, SYSTEM_PROMPT } from './ai'
 export { buildStoryGuide, ENTRY_RULES } from './story'
 export { assessRisk, RISK_RULES } from './overview'
 export { predictQuestions, QUESTION_RULES } from './questions'

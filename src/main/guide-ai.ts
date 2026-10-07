@@ -1,9 +1,11 @@
 import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { livePrompt } from '@shared/prompts'
 import { pullKey, type Guide, type PullDetail, type PullRef } from '@shared/types'
 import { GUIDE_SCHEMA, buildGuidePrompt, buildStoryGuide, parseAiGuide } from '@shared/guide'
 import { createClient, describeAiError, modelParams, refusalMessage } from './claude'
 import type { CodeIndexService } from './code-index/service'
+import type { PromptStore } from './prompt-store'
 import type { PullService } from './pulls'
 import type { SecretsStore } from './secrets'
 import type { SettingsStore } from './settings'
@@ -14,9 +16,9 @@ function cacheFileName(ref: PullRef): string {
   return `${ref.owner}__${ref.repo}__${ref.number}.json`
 }
 
-type CachedGuide = Omit<Extract<Guide, { source: 'ai' }>, 'questions'> & { questions?: unknown }
+type CachedGuide = Omit<Extract<Guide, { source: 'ai' }>, 'questions' | 'promptHash'> & { questions?: unknown; promptHash?: unknown }
 
-// The shape a cached guide needs to be reusable. Fields we can compute from code (questions) are backfilled, not regenerated.
+// The shape a cached guide needs to be reusable. Fields added since (questions, promptHash) are backfilled, not regenerated.
 function isCachedGuide(value: unknown): value is CachedGuide {
   if (typeof value !== 'object' || value === null) return false
   const guide = value as Record<string, unknown>
@@ -38,6 +40,7 @@ export class GuideService {
   constructor(
     private readonly secrets: SecretsStore,
     private readonly settings: SettingsStore,
+    private readonly prompts: PromptStore,
     private readonly pulls: PullService,
     private readonly code: CodeIndexService,
     private readonly cacheDir: string
@@ -56,9 +59,9 @@ export class GuideService {
     const file = join(this.cacheDir, cacheFileName(ref))
     if (!refresh) {
       const cached = await this.readCache(file)
-      if (cached && Array.isArray(cached.questions)) return cached as Guide
+      if (cached && Array.isArray(cached.questions) && typeof cached.promptHash === 'string') return cached as Guide
       if (cached) {
-        const upgraded = await this.backfillQuestions(ref, cached)
+        const upgraded = await this.backfill(ref, cached)
         await this.writeCache(ref, file, upgraded)
         return upgraded
       }
@@ -68,10 +71,19 @@ export class GuideService {
     return guide
   }
 
-  private async backfillQuestions(ref: PullRef, cached: CachedGuide): Promise<Guide> {
-    const detail = await this.pulls.cached(ref)
-    const { index } = await this.code.index(ref, detail)
-    return { ...cached, questions: buildStoryGuide(detail, index).questions }
+  // A guide cached before prompt versions existed was written with the prompt the library was seeded from.
+  private async backfill(ref: PullRef, cached: CachedGuide): Promise<Guide> {
+    let questions: string[]
+    if (Array.isArray(cached.questions)) questions = cached.questions
+    else {
+      const detail = await this.pulls.cached(ref)
+      const { index } = await this.code.index(ref, detail)
+      questions = buildStoryGuide(detail, index).questions
+    }
+    const library = await this.prompts.get()
+    const seeded = library.versions.find((version) => version.builtIn) ?? livePrompt(library)
+    const promptHash = typeof cached.promptHash === 'string' ? cached.promptHash : seeded.hash
+    return { ...cached, questions, promptHash }
   }
 
   private async readCache(file: string): Promise<CachedGuide | null> {
@@ -103,7 +115,8 @@ export class GuideService {
     const client = await createClient(this.secrets)
     const { index, heads } = await this.code.index(ref, detail)
     const story = buildStoryGuide(detail, index)
-    const prompt = buildGuidePrompt(detail, story, heads)
+    const live = livePrompt(await this.prompts.get())
+    const prompt = buildGuidePrompt(detail, story, heads, live.text)
     const model = this.settings.get().model
     let message
     try {
@@ -131,6 +144,6 @@ export class GuideService {
     } catch {
       throw new Error('Claude returned a guide that was not valid JSON. Try again.')
     }
-    return parseAiGuide(raw, detail, story)
+    return parseAiGuide(raw, detail, story, live.hash)
   }
 }

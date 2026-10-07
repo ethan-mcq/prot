@@ -257,3 +257,80 @@ test('a push while reading flags the stale AI guide in place, reaches the new fi
   await expect.poll(guideRequests).toBe(2)
   await expect(banner).toBeHidden()
 })
+
+test('a saved, renamed review prompt made live is the system prompt the next AI guide is written with', async () => {
+  const { page, anthropic } = h
+  const marker = 'PROMPT-MARKER-7'
+  const guideSystems = () =>
+    anthropic.requests
+      .filter((r) => JSON.stringify(r.body).includes('json_schema'))
+      .map((r) => (r.body as { system: string }).system)
+  await signIn()
+  await openSharePull()
+
+  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.getByRole('switch', { name: 'AI guide automatically' }).click()
+  await page.keyboard.press('Escape')
+  await page.getByRole('button', { name: 'Ask prot' }).click()
+  await page.getByLabel('Anthropic API key').fill('sk-ant-fixture')
+  await page.getByRole('button', { name: 'Save' }).click()
+  await page.getByRole('button', { name: 'Close chat' }).click()
+  await page.getByRole('button', { name: 'Generate AI guide', exact: true }).click()
+  await expect.poll(() => guideSystems().length).toBe(1)
+
+  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.getByRole('button', { name: 'Review prompt…' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Review prompt' })
+  const versions = dialog.getByRole('listbox', { name: 'Prompt versions' })
+  await expect(versions.getByRole('option')).toHaveText([/built-in default/])
+  const editor = dialog.getByRole('textbox', { name: 'System prompt' })
+  const builtIn = await editor.inputValue()
+  await editor.fill(`${builtIn}\n\n${marker}: lead every section with what could break.`)
+  await dialog.getByRole('button', { name: 'Save as new version' }).click()
+
+  const saved = versions.getByRole('option', { name: /^[0-9a-f]{12}$/ })
+  await expect(saved).toHaveCount(1)
+  await expect(versions.getByRole('option')).toHaveCount(2)
+  await expect(saved).toHaveAttribute('aria-selected', 'true')
+  await expect(dialog.getByRole('button', { name: 'Save as new version' })).toBeDisabled()
+  await shot('11a-prompt-two-versions')
+
+  await dialog.getByRole('button', { name: 'Rename prompt' }).click()
+  const name = dialog.getByRole('textbox', { name: 'Prompt name' })
+  await expect(name).toHaveValue('')
+  await expect(name).toHaveAttribute('placeholder', /^[0-9a-f]{12}$/)
+  await name.fill('terse risk-first')
+  await shot('11b-prompt-rename')
+  await name.press('Enter')
+  const renamed = versions.getByRole('option', { name: 'terse risk-first' })
+  await expect(renamed).toBeVisible()
+  await expect(versions.getByRole('option', { name: /^[0-9a-f]{12}$/ })).toHaveCount(0)
+
+  const builtInRow = versions.getByRole('option', { name: 'built-in default' })
+  await expect(builtInRow.getByText('live', { exact: true })).toBeVisible()
+  await dialog.getByRole('button', { name: 'Make live' }).click()
+  await expect(renamed.getByText('live', { exact: true })).toBeVisible()
+  await expect(builtInRow.getByText('live', { exact: true })).toHaveCount(0)
+  await expect(dialog.getByRole('button', { name: 'Make live' })).toBeDisabled()
+  await shot('11c-prompt-live')
+
+  await editor.fill('An unsaved edit.')
+  await dialog.getByRole('button', { name: 'Close' }).click()
+  await page.getByRole('dialog', { name: 'Discard your edits?' }).getByRole('button', { name: 'Discard' }).click()
+  await expect(dialog).toBeHidden()
+
+  const notice = page.getByRole('status').filter({ hasText: 'Generated with prompt' })
+  await expect(notice).toContainText('Generated with prompt built-in default. The live prompt is terse risk-first. Regenerate to use it.')
+  await shot('11d-prompt-notice')
+  await page.getByRole('button', { name: 'Regenerate AI guide' }).click()
+  await expect.poll(() => guideSystems().length).toBe(2)
+  await expect(notice).toBeHidden()
+  await expect(page.locator('[title^="Written with prompt"]')).toHaveAttribute('title', 'Written with prompt terse risk-first')
+
+  const [before, after] = guideSystems()
+  expect({ before: before?.includes(marker), after: after?.includes(marker), afterStart: after?.startsWith(builtIn.slice(0, 40)) }).toEqual({
+    before: false,
+    after: true,
+    afterStart: true
+  })
+})

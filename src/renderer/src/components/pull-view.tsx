@@ -14,6 +14,7 @@ import {
   Workflow,
   X
 } from 'lucide-react'
+import { displayName, findVersion, livePrompt, type PromptLibrary } from '@shared/prompts'
 import type { Chapter, DriftReason, GuideDrift, GuideStep, PullDetail, PullRef } from '@shared/types'
 import { pullKey } from '@shared/types'
 import { classifyFile } from '@shared/guide'
@@ -83,7 +84,7 @@ export function PullView({ pullRef, viewer }: { pullRef: PullRef; viewer: string
 function ReviewScreen({ initial, viewer }: { initial: PullDetail; viewer: string }) {
   const [session, dispatch] = useReducer(reviewReducer, initial, initSession)
   const [reviewOpen, setReviewOpen] = useState(false)
-  const { settings, keys } = usePrefs()
+  const { settings, keys, prompts } = usePrefs()
   const { updateView, setQuestions } = useViewStore()
   const ref = initial.summary.ref
   const { detail, guide, drift } = session
@@ -307,6 +308,15 @@ function ReviewScreen({ initial, viewer }: { initial: PullDetail; viewer: string
           {drift.kind === 'significant' && (
             <StaleGuideNotice drift={drift} loading={session.ai.status === 'loading'} onRefresh={() => void requestAi(true)} />
           )}
+          {guide.source === 'ai' && guide.promptHash !== prompts.liveHash && (
+            <PromptNotice
+              prompts={prompts}
+              guideHash={guide.promptHash}
+              loading={session.ai.status === 'loading'}
+              canRegenerate={keys.anthropic}
+              onRegenerate={() => void requestAi(true)}
+            />
+          )}
           {session.ai.status === 'failed' && (
             <AiNotice message={session.ai.message} onRetry={() => void requestAi(true)} />
           )}
@@ -410,14 +420,18 @@ function StepIcon({ step, done }: { step: GuideStep; done: boolean }) {
 
 function GuideChip({ onRequest }: { onRequest: (refresh: boolean) => void }) {
   const { session } = useReview()
-  const { keys } = usePrefs()
+  const { keys, prompts } = usePrefs()
   const { setChatOpen } = useViewStore()
   const loading = session.ai.status === 'loading'
-  const ai = session.guide.source === 'ai'
+  const guide = session.guide
+  const ai = guide.source === 'ai'
   const action = 'flex h-5 items-center gap-1 rounded-full px-1.5 transition-colors hover:bg-card hover:text-foreground'
 
   return (
-    <div className="flex h-7 items-center gap-1 rounded-full bg-tab pr-0.5 pl-2.5 font-mono text-[11px] text-tab-foreground">
+    <div
+      title={guide.source === 'ai' ? `Written with prompt ${promptLabel(prompts, guide.promptHash)}` : undefined}
+      className="flex h-7 items-center gap-1 rounded-full bg-tab pr-0.5 pl-2.5 font-mono text-[11px] text-tab-foreground"
+    >
       {ai ? <Sparkles className="size-3 text-violet-500 dark:text-violet-300" /> : <span className="size-1.5 rounded-full bg-current opacity-60" />}
       <span className="text-foreground/80">{ai ? 'ai guide' : 'quick guide'}</span>
       {loading ? (
@@ -499,6 +513,40 @@ function StaleGuideNotice({
         {loading ? <Loader2 className="animate-spin" /> : <WandSparkles />}
         {loading ? 'Refreshing guide' : 'Refresh guide'}
       </button>
+    </div>
+  )
+}
+
+function promptLabel(prompts: PromptLibrary, hash: string): string {
+  const version = findVersion(prompts, hash)
+  return version === undefined ? hash : displayName(version)
+}
+
+function PromptNotice({
+  prompts,
+  guideHash,
+  loading,
+  canRegenerate,
+  onRegenerate
+}: {
+  prompts: PromptLibrary
+  guideHash: string
+  loading: boolean
+  canRegenerate: boolean
+  onRegenerate: () => void
+}) {
+  return (
+    <div role="status" className="pane flex shrink-0 items-center gap-3 px-3.5 py-1.5 font-mono text-[11.5px] text-muted-foreground">
+      <ScrollText aria-hidden className="size-3.5 shrink-0" />
+      <span className="min-w-0 flex-1 truncate">
+        Generated with prompt <span className="text-foreground/85">{promptLabel(prompts, guideHash)}</span>. The live prompt is{' '}
+        <span className="text-foreground/85">{displayName(livePrompt(prompts))}</span>. Regenerate to use it.
+      </span>
+      {canRegenerate && (
+        <button type="button" onClick={onRegenerate} disabled={loading} className="shrink-0 text-foreground hover:underline disabled:opacity-50">
+          {loading ? 'regenerating' : 'regenerate'}
+        </button>
+      )}
     </div>
   )
 }

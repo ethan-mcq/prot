@@ -4,10 +4,12 @@ import { AuthService } from './auth'
 import { ChatService } from './chat'
 import { CodeIndexService } from './code-index/service'
 import { GitHubClient } from './github'
+import { SYSTEM_PROMPT } from '@shared/guide'
 import { GuideService } from './guide-ai'
 import { registerIpc } from './ipc'
 import { installMenu } from './menu'
 import { InboxPoller } from './poller'
+import { PromptStore } from './prompt-store'
 import { PullService } from './pulls'
 import { SecretsStore } from './secrets'
 import { SettingsStore } from './settings'
@@ -32,7 +34,8 @@ function boot(): void {
   const poller = new InboxPoller(auth, settings)
   const pulls = new PullService(auth, (ref) => poller.latestUpdatedAt(ref))
   const code = new CodeIndexService(pulls)
-  const guide = new GuideService(secrets, settings, pulls, code, join(app.getPath('userData'), 'guides'))
+  const prompts = new PromptStore(join(app.getPath('userData'), 'prompts.json'), SYSTEM_PROMPT)
+  const guide = new GuideService(secrets, settings, prompts, pulls, code, join(app.getPath('userData'), 'guides'))
   const chat = new ChatService(secrets, settings, pulls, broadcast)
 
   auth.onChange((state) => {
@@ -41,7 +44,7 @@ function boot(): void {
   })
   app.on('browser-window-focus', () => poller.refreshIfStale())
 
-  registerIpc({ auth, poller, pulls, guide, code, chat, settings, secrets })
+  registerIpc({ auth, poller, pulls, guide, code, chat, settings, secrets, prompts })
   installMenu()
   auth.restore()
   createMainWindow()

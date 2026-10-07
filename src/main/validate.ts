@@ -1,3 +1,4 @@
+import { PROMPT_HASH, PROMPT_NAME_MAX, PROMPT_TEXT_MAX } from '@shared/prompts'
 import type {
   CardContext,
   CardRole,
@@ -280,4 +281,22 @@ export function parseAnthropicKey(raw: unknown): string | null {
   if (raw === null) return null
   const key = str(raw, 'API key').trim()
   return key === '' ? null : key
+}
+
+export function parsePromptHash(raw: unknown): string {
+  const hash = str(raw, 'prompt hash')
+  if (!PROMPT_HASH.test(hash)) throw new Error('A prompt hash is 12 hex characters')
+  return hash
+}
+
+export function parsePromptText(raw: unknown): string {
+  const text = nonEmptyStr(raw, 'Prompt')
+  if (text.length > PROMPT_TEXT_MAX) throw new Error(`A prompt is at most ${PROMPT_TEXT_MAX} characters`)
+  return text
+}
+
+export function parsePromptName(raw: unknown): string {
+  const name = str(raw, 'Prompt name').trim()
+  if (name.length > PROMPT_NAME_MAX) throw new Error(`A prompt name is at most ${PROMPT_NAME_MAX} characters`)
+  return name
 }
