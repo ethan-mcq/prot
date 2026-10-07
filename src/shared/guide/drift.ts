@@ -129,7 +129,8 @@ export function withNewSinceGuide(guide: Guide, detail: PullDetail, paths: strin
     id: `ch-${guide.chapters.length + 1}`,
     title: 'New since guide',
     summary: [intro, ...summaries].join('\n\n'),
-    files: ordered
+    files: ordered,
+    cards: []
   }
   return { ...guide, chapters: [...guide.chapters, chapter] }
 }

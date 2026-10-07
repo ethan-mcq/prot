@@ -2,6 +2,7 @@ import { ipcMain, shell } from 'electron'
 import { IPC } from '@shared/ipc'
 import type { AuthService } from './auth'
 import type { ChatService } from './chat'
+import type { CodeIndexService } from './code-index/service'
 import type { GuideService } from './guide-ai'
 import type { InboxPoller } from './poller'
 import type { PullService } from './pulls'
@@ -23,13 +24,14 @@ export type Services = {
   poller: InboxPoller
   pulls: PullService
   guide: GuideService
+  code: CodeIndexService
   chat: ChatService
   settings: SettingsStore
   secrets: SecretsStore
 }
 
 export function registerIpc(services: Services): void {
-  const { auth, poller, pulls, guide, chat, settings, secrets } = services
+  const { auth, poller, pulls, guide, code, chat, settings, secrets } = services
 
   ipcMain.handle(IPC.authGet, () => auth.get())
   ipcMain.handle(IPC.authGh, () => auth.signInWithGh())
@@ -55,6 +57,7 @@ export function registerIpc(services: Services): void {
     return pulls.comment(parsePullRef(ref), body)
   })
 
+  ipcMain.handle(IPC.guideStory, (_event, ref: unknown) => code.story(parsePullRef(ref)))
   ipcMain.handle(IPC.guideAi, (_event, ref: unknown, refresh: unknown) =>
     guide.get(parsePullRef(ref), refresh === true)
   )

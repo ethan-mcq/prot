@@ -7,6 +7,7 @@ export const EMPTY_VIEW: ViewContext = {
   chapter: null,
   flow: null,
   file: null,
+  section: null,
   selection: null
 }
 

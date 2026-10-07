@@ -8,6 +8,7 @@ const emptyContext: ViewContext = {
   chapter: null,
   flow: null,
   file: null,
+  section: null,
   selection: null
 }
 
@@ -74,13 +75,13 @@ describe('buildViewContext', () => {
     const block = buildViewContext({
       ...emptyContext,
       step: { kind: 'chapter', index: 1 },
-      chapter: { id: 'c2', title: 'Retry loop', summary: 'Adds backoff.', files: ['src/upload.ts'] },
+      chapter: { id: 'c2', title: 'Retry loop', summary: 'Adds backoff.', files: ['src/upload.ts'], cards: [] },
       flow: {
         caption: '',
         nodes: [
-          { id: 'a', label: 'upload()', file: null, change: 'modified', chapterId: null },
-          { id: 'b', label: 'retry()', file: null, change: 'added', chapterId: null },
-          { id: 'c', label: 'fetch()', file: null, change: 'context', chapterId: null }
+          { id: 'a', label: 'upload()', file: null, change: 'modified', chapterId: null, symbolId: null },
+          { id: 'b', label: 'retry()', file: null, change: 'added', chapterId: null, symbolId: null },
+          { id: 'c', label: 'fetch()', file: null, change: 'context', chapterId: null, symbolId: null }
         ],
         edges: []
       },
@@ -93,6 +94,32 @@ describe('buildViewContext', () => {
     expect(block).toContain('Open file: src/upload.ts (visible lines 10-42)')
     expect(block).toContain('@@ -1 +1 @@\n-a\n+b')
     expect(block).toContain('Selected text:\nawait sleep(delay)')
+  })
+
+  it('lists the section cards and the code of the card on screen', () => {
+    const block = buildViewContext({
+      ...emptyContext,
+      step: { kind: 'chapter', index: 0 },
+      section: {
+        cards: [
+          { qualifiedName: 'MainActivity.onNewIntent', kind: 'method', path: 'app/MainActivity.kt', lines: { start: 11, end: 15 }, change: 'modified' },
+          { qualifiedName: 'CapyShareModule.takeShare', kind: 'method', path: 'share/CapyShareModule.kt', lines: { start: 10, end: 14 }, change: 'added' }
+        ],
+        focused: { qualifiedName: 'CapyShareModule.takeShare', path: 'share/CapyShareModule.kt', code: '+fun takeShare(intent: Intent) {' }
+      }
+    })
+    expect(block).toBe(
+      [
+        '<view_context>',
+        'Guide step: chapter 1',
+        'Section cards:',
+        '- MainActivity.onNewIntent (method, modified, app/MainActivity.kt:11-15)',
+        '- CapyShareModule.takeShare (method, added, share/CapyShareModule.kt:10-14)',
+        'Card on screen: CapyShareModule.takeShare in share/CapyShareModule.kt',
+        '+fun takeShare(intent: Intent) {',
+        '</view_context>'
+      ].join('\n')
+    )
   })
 
   it('truncates the patch at 30000 characters', () => {

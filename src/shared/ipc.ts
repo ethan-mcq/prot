@@ -31,6 +31,7 @@ export interface ProtApi {
     comment(ref: PullRef, body: string): Promise<void>
   }
   guide: {
+    story(ref: PullRef): Promise<Guide>
     ai(ref: PullRef, refresh: boolean): Promise<Guide>
   }
   ai: {
@@ -62,6 +63,7 @@ export const IPC = {
   pullTree: 'pull:tree',
   pullReview: 'pull:review',
   pullComment: 'pull:comment',
+  guideStory: 'guide:story',
   guideAi: 'guide:ai',
   aiChat: 'ai:chat',
   aiCancel: 'ai:cancel',

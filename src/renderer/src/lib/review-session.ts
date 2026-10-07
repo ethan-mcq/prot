@@ -2,6 +2,7 @@ import { lineAnchor } from '@shared/diff'
 import { buildHeuristicGuide, guideDrift, withNewSinceGuide } from '@shared/guide'
 import type {
   Chapter,
+  CodeSymbol,
   DiffLine,
   DiffLocation,
   DraftComment,
@@ -27,6 +28,7 @@ export type ReviewSession = {
   guide: Guide
   drift: GuideDrift
   ai: AiGuideRequest
+  symbols: Record<string, CodeSymbol>
   step: number
   reviewed: string[]
   drafts: DraftComment[]
@@ -40,6 +42,7 @@ export type ReviewAction =
   | { type: 'ai/start' }
   | { type: 'ai/loaded'; guide: Guide }
   | { type: 'ai/failed'; message: string }
+  | { type: 'story/loaded'; guide: Guide }
   | { type: 'detail/updated'; detail: PullDetail; reviewed: string[] }
   | { type: 'reviewed/set'; keys: string[]; reviewed: boolean }
   | { type: 'draft/add'; path: string; line: DiffLine; body: string }
@@ -61,14 +64,42 @@ function clampStep(index: number, guide: Guide): number {
   return Math.min(Math.max(index, 0), last)
 }
 
-function chapterHolding(guide: Guide, path: string | null, chapterId: string | null): number {
+function chapterHolding(guide: Guide, path: string | null, chapterId: string | null, symbolId: string | null = null): number {
+  const bySymbol = guide.chapters.findIndex((chapter) =>
+    chapter.cards.some((card) => card.symbolId === symbolId && card.seeChapterId === null)
+  )
+  if (symbolId !== null && bySymbol !== -1) return bySymbol
   const byPath = guide.chapters.findIndex((chapter) => path !== null && chapter.files.includes(path))
   if (byPath !== -1) return byPath
   return guide.chapters.findIndex((chapter) => chapter.id === chapterId)
 }
 
+export function cardKey(symbolId: string): string {
+  return `symbol:${symbolId}`
+}
+
 export function chapterReviewKeys(chapter: Chapter): string[] {
+  const cards = chapter.cards.filter((card) => card.seeChapterId === null)
+  if (cards.length > 0) return cards.map((card) => cardKey(card.symbolId))
   return chapter.files.length > 0 ? chapter.files : [`chapter:${chapter.id}`]
+}
+
+// A file counts as reviewed once every full card showing its changes is.
+export function isFileReviewed(session: ReviewSession, path: string): boolean {
+  if (session.reviewed.includes(path)) return true
+  const keys: string[] = []
+  for (const chapter of session.guide.chapters) {
+    for (const card of chapter.cards) {
+      const symbol = symbolFor(session, card.symbolId)
+      if (card.seeChapterId === null && symbol?.path === path && symbol.change !== 'context') keys.push(cardKey(card.symbolId))
+    }
+  }
+  return keys.length > 0 && isReviewed(session, keys)
+}
+
+// The latest index wins, so card ranges follow the current head even under an older AI guide.
+export function symbolFor(session: ReviewSession, symbolId: string): CodeSymbol | undefined {
+  return session.symbols[symbolId] ?? session.guide.symbols[symbolId]
 }
 
 export function isReviewed(session: ReviewSession, keys: string[]): boolean {
@@ -100,6 +131,13 @@ export function reviewReducer(state: ReviewSession, action: ReviewAction): Revie
     }
     case 'ai/failed':
       return { ...state, ai: { status: 'failed', message: action.message } }
+    case 'story/loaded': {
+      if (action.guide.headSha !== state.detail.head.sha) return state
+      const symbols = action.guide.symbols
+      if (state.written.source === 'ai') return { ...state, symbols }
+      const next = present(action.guide, state.detail)
+      return { ...state, ...next, symbols, step: clampStep(state.step, next.guide) }
+    }
     case 'detail/updated': {
       const written = state.written.source === 'heuristic' ? buildHeuristicGuide(action.detail) : state.written
       const next = present(written, action.detail)
@@ -107,6 +145,7 @@ export function reviewReducer(state: ReviewSession, action: ReviewAction): Revie
       return {
         ...state,
         ...next,
+        symbols: pushed ? {} : state.symbols,
         step: clampStep(state.step, next.guide),
         reviewed: pushed ? action.reviewed : state.reviewed
       }
@@ -139,7 +178,7 @@ export function reviewReducer(state: ReviewSession, action: ReviewAction): Revie
     case 'focus/node': {
       const focus = action.at === null ? null : { ...action.at, nonce: (state.focus?.nonce ?? 0) + 1 }
       const path = action.at?.path ?? action.node.file
-      const chapter = chapterHolding(state.guide, path, action.node.chapterId)
+      const chapter = chapterHolding(state.guide, path, action.node.chapterId, action.node.symbolId)
       if (action.ide || chapter === -1) {
         if (path === null) return state
         return { ...state, focus, ide: { open: true, mode: state.ide.mode, path } }
@@ -179,6 +218,7 @@ export function initSession(detail: PullDetail): ReviewSession {
   return {
     ...present(buildHeuristicGuide(detail), detail),
     ai: { status: 'idle' },
+    symbols: {},
     step: 0,
     reviewed: stored.reviewed,
     drafts: stored.drafts,

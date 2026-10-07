@@ -1,22 +1,24 @@
 import { describe, expect, it } from 'vitest'
-import { parseAiGuide } from '@shared/guide'
-import { added, capySharePull, KOTLIN_MODULE, pullWith, SWIFT_MODULE } from '@shared/guide/fixtures'
+import { buildHeuristicGuide, buildStoryGuide, parseAiGuide } from '@shared/guide'
+import { added, capySharePull, capyStoryIndex, capyStoryPull, KOTLIN_MODULE, pullWith, STORY, SWIFT_MODULE } from '@shared/guide/fixtures'
 import type { Chapter, DiffLine, FlowNode, Guide, PullDetail } from '@shared/types'
-import { initSession, reviewReducer, type ReviewSession } from './review-session'
+import { cardKey, initSession, isFileReviewed, reviewReducer, type ReviewSession } from './review-session'
 
 function guideWith(chapterCount: number): Guide {
   const chapters: Chapter[] = Array.from({ length: chapterCount }, (_, i) => ({
     id: `c${i}`,
     title: `Chapter ${i}`,
     summary: '',
-    files: []
+    files: [],
+    cards: []
   }))
   return {
     source: 'heuristic',
     headSha: 'abc',
-    overview: { summary: '', points: [] },
+    overview: { risk: { level: 'low', reason: '' }, synopsis: '', points: [] },
     flow: { caption: '', nodes: [], edges: [] },
-    chapters
+    chapters,
+    symbols: {}
   }
 }
 
@@ -28,6 +30,7 @@ function session(chapterCount: number, step = 0): ReviewSession {
     guide,
     drift: { kind: 'fresh' },
     ai: { status: 'idle' },
+    symbols: {},
     step,
     reviewed: [],
     drafts: [],
@@ -67,10 +70,10 @@ describe('draft comments', () => {
 })
 
 describe('jumping to a flow node', () => {
-  const node: FlowNode = { id: 'n', label: 'takeShare()', file: 'app/Share.kt', change: 'added', chapterId: null }
+  const node: FlowNode = { id: 'n', label: 'takeShare()', file: 'app/Share.kt', change: 'added', chapterId: null, symbolId: null }
   const at = { path: 'app/Share.kt', line: 5, side: 'RIGHT' as const }
   const guide = guideWith(2)
-  guide.chapters[1] = { id: 'c1', title: 'Share', summary: '', files: ['app/Share.kt'] }
+  guide.chapters[1] = { id: 'c1', title: 'Share', summary: '', files: ['app/Share.kt'], cards: [] }
 
   it('lands on the chapter holding the line, re-clicks re-focus, and leaving the step clears it', () => {
     const start = { ...session(2, 1), guide }
@@ -103,10 +106,13 @@ describe('a pull request update while reading', () => {
 
   it('keeps the AI guide, step and open IDE, and puts the uncovered file in a trailing chapter', () => {
     const raw = {
-      overview: { summary: 'Share text into a thread.', points: [] },
-      chapters: [{ title: 'Native share module', summary: '', files: [KOTLIN_MODULE, SWIFT_MODULE] }]
+      overview: { risk: { level: 'low', reason: 'Small.' }, synopsis: 'Shares text into a thread.', points: [] },
+      caption: '',
+      sections: [],
+      files: [{ title: 'Native share module', summary: '', files: [KOTLIN_MODULE, SWIFT_MODULE] }]
     }
-    let state = reviewReducer(initSession(capySharePull), { type: 'ai/loaded', guide: parseAiGuide(raw, capySharePull) })
+    const story = buildHeuristicGuide(capySharePull)
+    let state = reviewReducer(initSession(capySharePull), { type: 'ai/loaded', guide: parseAiGuide(raw, capySharePull, story) })
     state = reviewReducer(state, { type: 'step/go', index: 2 })
     state = reviewReducer(state, { type: 'ide/open', path: KOTLIN_MODULE })
     state = reviewReducer(state, { type: 'reviewed/set', keys: [KOTLIN_MODULE], reviewed: true })
@@ -140,5 +146,40 @@ describe('a pull request update while reading', () => {
       drift: { kind: 'fresh' },
       hasQueue: true
     })
+  })
+})
+
+describe('the story guide arriving', () => {
+  const story = buildStoryGuide(capyStoryPull, capyStoryIndex)
+  const onNewIntent = `${STORY.activity}#MainActivity.onNewIntent`
+  const activityModule = `${STORY.activity}#(module)`
+
+  it('replaces the quick guide on the same head, ignores a story for another head, and under an AI guide only refreshes symbols', () => {
+    const quick = initSession(capyStoryPull)
+    const swapped = reviewReducer(quick, { type: 'story/loaded', guide: story })
+    const stale = reviewReducer(quick, { type: 'story/loaded', guide: { ...story, headSha: 'old' } })
+    const ai = reviewReducer(quick, {
+      type: 'ai/loaded',
+      guide: parseAiGuide(
+        { overview: { synopsis: 'x' }, sections: [{ title: 'All of it', symbols: [onNewIntent] }], files: [] },
+        capyStoryPull,
+        story
+      )
+    })
+    const underAi = reviewReducer(ai, { type: 'story/loaded', guide: story })
+    expect({
+      swapped: swapped.guide.chapters[0]?.title,
+      stale: stale.guide === quick.guide,
+      aiTitle: underAi.guide.chapters[0]?.title,
+      aiSymbols: Object.keys(underAi.symbols).length
+    }).toEqual({ swapped: 'takeShare enters through MainActivity.onNewIntent', stale: true, aiTitle: 'All of it', aiSymbols: 37 })
+  })
+
+  it('counts a file reviewed once every card showing its changes is', () => {
+    let state = reviewReducer(initSession(capyStoryPull), { type: 'story/loaded', guide: story })
+    state = reviewReducer(state, { type: 'reviewed/set', keys: [cardKey(onNewIntent)], reviewed: true })
+    const half = isFileReviewed(state, STORY.activity)
+    state = reviewReducer(state, { type: 'reviewed/set', keys: [cardKey(activityModule)], reviewed: true })
+    expect({ half, whole: isFileReviewed(state, STORY.activity) }).toEqual({ half: false, whole: true })
   })
 })

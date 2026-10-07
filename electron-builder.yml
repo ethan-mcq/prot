@@ -6,8 +6,15 @@ directories:
 files:
   - out/**/*
   - package.json
+extraResources:
+  - from: node_modules/tree-sitter-wasms/out
+    to: tree-sitter-wasms
+    filter:
+      - "tree-sitter-@(typescript|tsx|javascript|python|go|rust|kotlin|swift|java|ruby).wasm"
 mac:
   icon: resources/icon.icns
   category: public.app-category.developer-tools
   target: dir
   identity: null
+asarUnpack:
+  - node_modules/web-tree-sitter/**

@@ -52,6 +52,18 @@ export function buildViewContext(context: ViewContext): string {
     lines.push(`Chapter summary: ${context.chapter.summary}`)
     lines.push(`Chapter files: ${context.chapter.files.join(', ')}`)
   }
+  if (context.section) {
+    lines.push('Section cards:')
+    for (const card of context.section.cards) {
+      const range = card.lines ? `:${card.lines.start}-${card.lines.end}` : ''
+      lines.push(`- ${card.qualifiedName} (${card.kind}, ${card.change}, ${card.path}${range})`)
+    }
+    const focused = context.section.focused
+    if (focused) {
+      lines.push(`Card on screen: ${focused.qualifiedName} in ${focused.path}`)
+      lines.push(truncate(focused.code, PATCH_LIMIT))
+    }
+  }
   if (context.flow && context.flow.nodes.length > 0) {
     const chain = context.flow.nodes.map((node) => node.label).join(' -> ')
     lines.push(`Flow: ${chain}`)

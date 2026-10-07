@@ -1,4 +1,4 @@
-import type { ChangedFile, FileStatus, PullDetail } from '../types'
+import type { ChangedFile, CodeIndex, CodeSymbol, FileStatus, PullDetail } from '../types'
 
 export function changed(
   path: string,
@@ -259,3 +259,328 @@ export const capySharePull: PullDetail = pullWith(
     '- [ ] Updated docs'
   ].join('\n')
 )
+
+const SHARE = `${MOBILE}/modules/capy-share`
+export const STORY = {
+  activity: `${MOBILE}/android/app/src/main/java/ai/capy/MainActivity.kt`,
+  module: `${SHARE}/android/src/main/java/ai/capy/share/CapyShareModule.kt`,
+  inboxKt: `${SHARE}/android/src/main/java/ai/capy/share/ShareInbox.kt`,
+  native: `${SHARE}/index.ts`,
+  inbox: `${MOBILE}/src/share/share-inbox.tsx`,
+  sheet: `${MOBILE}/src/share/share-sheet.tsx`,
+  send: `${MOBILE}/src/share/send.ts`,
+  store: `${MOBILE}/src/chat/thread-store.ts`,
+  sendTest: `${MOBILE}/src/share/__tests__/send.test.ts`,
+  moduleTest: `${SHARE}/android/src/test/java/ai/capy/share/CapyShareModuleTest.kt`,
+  dateTest: `${MOBILE}/src/format/__tests__/date.test.ts`,
+  config: `${MOBILE}/app.config.ts`
+}
+
+export const STORY_HEADS: Record<string, string[]> = {
+  [STORY.module]: [
+    'package ai.capy.share',
+    '',
+    'import android.content.Intent',
+    'import android.net.Uri',
+    '',
+    'const val MAX_SHARE_ITEMS = 20',
+    '',
+    'class CapyShareModule : Module() {',
+    '  companion object {',
+    '    fun takeShare(intent: Intent) {',
+    '      val items = stageItems(intent)',
+    '      ShareInbox.push(items)',
+    '    }',
+    '',
+    '    fun stageItems(intent: Intent): List<SharedItem> {',
+    '      val uris = readUris(intent).take(MAX_SHARE_ITEMS)',
+    '      return uris.map { uri -> SharedItem(uri.toString(), mimeOf(intent)) }',
+    '    }',
+    '',
+    '    private fun readUris(intent: Intent): List<Uri> =',
+    '      intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM) ?: emptyList()',
+    '',
+    '    private fun mimeOf(intent: Intent): String = intent.type ?: "application/octet-stream"',
+    '  }',
+    '}',
+    '',
+    'data class SharedItem(val uri: String, val mimeType: String)'
+  ],
+  [STORY.inboxKt]: [
+    'package ai.capy.share',
+    '',
+    'object ShareInbox {',
+    '  private val items = mutableListOf<SharedItem>()',
+    '',
+    '  fun push(staged: List<SharedItem>) {',
+    '    synchronized(items) { items.addAll(staged) }',
+    '  }',
+    '}'
+  ],
+  [STORY.native]: [
+    'import { requireOptionalNativeModule } from "expo-modules-core";',
+    '',
+    'export type NativeSharedItem = { uri: string; mimeType: string };',
+    '',
+    'type CapyShareModule = {',
+    '  takeShare(): Promise<ReadonlyArray<NativeSharedItem>>;',
+    '  upload(id: string, caption: string, threadId: string): Promise<void>;',
+    '};',
+    '',
+    'export const CapyShare = requireOptionalNativeModule<CapyShareModule>("CapyShare");'
+  ],
+  [STORY.inbox]: [
+    'import { CapyShare } from "../../modules/capy-share";',
+    'import { ShareSheet } from "./share-sheet";',
+    '',
+    'export function ShareInbox() {',
+    '  const items = useSharedItems();',
+    '  return <ShareSheet items={items} />;',
+    '}',
+    '',
+    'function useSharedItems() {',
+    '  return CapyShare?.takeShare() ?? [];',
+    '}'
+  ],
+  [STORY.sheet]: [
+    'import { useShareSend } from "./send";',
+    '',
+    'export function ShareSheet({ items }: { items: NativeSharedItem[] }) {',
+    '  const send = useShareSend();',
+    '  return <ThreadPicker onPick={(thread) => send(thread, items)} />;',
+    '}'
+  ],
+  [STORY.send]: [
+    'import { CapyShare } from "../../modules/capy-share";',
+    'import { MAX_MESSAGE_LENGTH } from "../chat/thread-store";',
+    '',
+    'export function useShareSend() {',
+    '  return async (threadId: string, items: NativeSharedItem[]) => {',
+    '    const caption = items.map((item) => item.uri).join(" ").slice(0, MAX_MESSAGE_LENGTH);',
+    '    for (const item of items) {',
+    '      await CapyShare?.upload(item.uri, caption, threadId);',
+    '    }',
+    '  };',
+    '}'
+  ],
+  [STORY.sendTest]: [
+    'import { useShareSend } from "../send";',
+    '',
+    'test("uploads every shared item", async () => {',
+    '  const send = useShareSend();',
+    '  await send("thread-1", [{ uri: "a", mimeType: "text/plain" }]);',
+    '});'
+  ],
+  [STORY.moduleTest]: [
+    'package ai.capy.share',
+    '',
+    'class CapyShareModuleTest {',
+    '  @Test fun stagesEveryUri() {',
+    '    val items = CapyShareModule.stageItems(intentWith(2))',
+    '    assertEquals(2, items.size)',
+    '  }',
+    '}'
+  ],
+  [STORY.dateTest]: [
+    'import { formatDate } from "../date";',
+    '',
+    'test("formats today", () => {',
+    '  expect(formatDate(new Date(0))).toBe("Jan 1");',
+    '});'
+  ]
+}
+
+function addedFrom(path: string): ChangedFile {
+  return added(path, STORY_HEADS[path] ?? [])
+}
+
+export const capyStoryPull: PullDetail = pullWith(
+  [
+    changed(STORY.activity, 'modified', [
+      '@@ -2,4 +2,5 @@ package ai.capy',
+      ' ',
+      ' import android.content.Intent',
+      '+import ai.capy.share.CapyShareModule',
+      ' ',
+      ' class MainActivity : ReactActivity() {',
+      '@@ -10,4 +11,5 @@ class MainActivity : ReactActivity() {',
+      '   override fun onNewIntent(intent: Intent) {',
+      '     super.onNewIntent(intent)',
+      '+    CapyShareModule.takeShare(intent)',
+      '   }',
+      ' '
+    ]),
+    addedFrom(STORY.module),
+    addedFrom(STORY.inboxKt),
+    addedFrom(STORY.native),
+    addedFrom(STORY.inbox),
+    addedFrom(STORY.sheet),
+    addedFrom(STORY.send),
+    changed(STORY.store, 'modified', [
+      '@@ -1,9 +1,11 @@',
+      ' import { api } from "../api";',
+      ' ',
+      '+export const MAX_MESSAGE_LENGTH = 4000;',
+      '+',
+      ' export function appendMessage(threadId: string, text: string) {',
+      '   return api.post(`/threads/${threadId}/messages`, { text: normalizeText(text) });',
+      ' }',
+      ' ',
+      ' function normalizeText(text: string) {',
+      '-  return text.trim();',
+      '+  return text.replace(/\\s+/g, " ").trim().slice(0, MAX_MESSAGE_LENGTH);',
+      ' }'
+    ]),
+    addedFrom(STORY.sendTest),
+    addedFrom(STORY.moduleTest),
+    addedFrom(STORY.dateTest),
+    changed(STORY.config, 'modified', [
+      '@@ -18,4 +18,5 @@ export default ({ config }: ConfigContext): ExpoConfig => ({',
+      '   plugins: [',
+      "     'expo-router',",
+      "+    ['./plugins/with-share-extension', { appGroup: 'group.com.capy.app' }],",
+      "     'expo-secure-store',",
+      '   ],'
+    ])
+  ],
+  'Adds a share extension so people can share from any app straight into a Capy thread.'
+)
+
+type SymbolSpec = {
+  kind: CodeSymbol['kind']
+  change: CodeSymbol['change']
+  head: [number, number] | null
+  base?: [number, number] | null
+  calls?: string[]
+  callLines?: Record<string, number[]>
+  parent?: string
+  decorators?: string[]
+}
+
+export function codeSymbol(path: string, qualifiedName: string, spec: SymbolSpec): CodeSymbol {
+  const range = (pair: [number, number] | null | undefined) => (pair ? { start: pair[0], end: pair[1] } : null)
+  const calls = spec.calls ?? []
+  const at = spec.head?.[0] ?? spec.base?.[0] ?? 1
+  return {
+    id: `${path}#${qualifiedName}`,
+    path,
+    name: qualifiedName.split(/\.| › /).at(-1) ?? qualifiedName,
+    qualifiedName,
+    kind: spec.kind,
+    parentId: spec.parent === undefined ? null : `${path}#${spec.parent}`,
+    head: range(spec.head),
+    base: range(spec.base),
+    change: spec.change,
+    calls,
+    callLines: spec.callLines ?? Object.fromEntries(calls.map((id) => [id, [at]])),
+    decorators: spec.decorators ?? []
+  }
+}
+
+const id = (path: string, name: string) => `${path}#${name}`
+const S = STORY
+
+export const capyStoryIndex: CodeIndex = {
+  headSha: 'head123',
+  skipped: [],
+  symbols: [
+    codeSymbol(S.activity, 'MainActivity', { kind: 'class', change: 'context', head: [6, 17], base: [5, 15] }),
+    codeSymbol(S.activity, 'MainActivity.onCreate', { kind: 'method', change: 'context', head: [7, 10], base: [6, 9], parent: 'MainActivity' }),
+    codeSymbol(S.activity, 'MainActivity.onNewIntent', {
+      kind: 'method',
+      change: 'modified',
+      head: [11, 15],
+      base: [10, 13],
+      parent: 'MainActivity',
+      calls: [id(S.module, 'CapyShareModule'), id(S.module, 'CapyShareModule.takeShare')],
+      callLines: { [id(S.module, 'CapyShareModule')]: [13], [id(S.module, 'CapyShareModule.takeShare')]: [13] }
+    }),
+    codeSymbol(S.activity, 'MainActivity.getMainComponentName', { kind: 'method', change: 'context', head: [16, 16], base: [14, 14], parent: 'MainActivity' }),
+    codeSymbol(S.activity, '(module)', { kind: 'module', change: 'modified', head: [4, 4], base: null, calls: [id(S.module, 'CapyShareModule')] }),
+
+    codeSymbol(S.module, 'MAX_SHARE_ITEMS', { kind: 'constant', change: 'added', head: [6, 7] }),
+    codeSymbol(S.module, 'CapyShareModule', { kind: 'class', change: 'added', head: [8, 26] }),
+    codeSymbol(S.module, 'CapyShareModule.takeShare', {
+      kind: 'method',
+      change: 'added',
+      head: [10, 14],
+      parent: 'CapyShareModule',
+      calls: [id(S.module, 'CapyShareModule.stageItems'), id(S.inboxKt, 'ShareInbox'), id(S.inboxKt, 'ShareInbox.push')]
+    }),
+    codeSymbol(S.module, 'CapyShareModule.stageItems', {
+      kind: 'method',
+      change: 'added',
+      head: [15, 19],
+      parent: 'CapyShareModule',
+      calls: [
+        id(S.module, 'CapyShareModule.readUris'),
+        id(S.module, 'MAX_SHARE_ITEMS'),
+        id(S.module, 'SharedItem'),
+        id(S.module, 'CapyShareModule.mimeOf')
+      ]
+    }),
+    codeSymbol(S.module, 'CapyShareModule.readUris', { kind: 'method', change: 'added', head: [20, 22], parent: 'CapyShareModule' }),
+    codeSymbol(S.module, 'CapyShareModule.mimeOf', { kind: 'method', change: 'added', head: [23, 23], parent: 'CapyShareModule' }),
+    codeSymbol(S.module, 'SharedItem', { kind: 'class', change: 'added', head: [27, 27] }),
+    codeSymbol(S.module, '(module)', { kind: 'module', change: 'added', head: [1, 5] }),
+
+    codeSymbol(S.inboxKt, 'ShareInbox', { kind: 'class', change: 'added', head: [3, 9], calls: [id(S.module, 'SharedItem')] }),
+    codeSymbol(S.inboxKt, 'ShareInbox.push', { kind: 'method', change: 'added', head: [6, 8], parent: 'ShareInbox', calls: [id(S.module, 'SharedItem')] }),
+    codeSymbol(S.inboxKt, '(module)', { kind: 'module', change: 'added', head: [1, 2] }),
+
+    codeSymbol(S.native, 'NativeSharedItem', { kind: 'type', change: 'added', head: [3, 4] }),
+    codeSymbol(S.native, 'CapyShareModule', { kind: 'type', change: 'added', head: [5, 9], calls: [id(S.native, 'NativeSharedItem')] }),
+    codeSymbol(S.native, 'CapyShare', { kind: 'constant', change: 'added', head: [10, 10], calls: [id(S.native, 'CapyShareModule')] }),
+    codeSymbol(S.native, '(module)', { kind: 'module', change: 'added', head: [1, 2] }),
+
+    codeSymbol(S.inbox, 'ShareInbox', { kind: 'function', change: 'added', head: [4, 8], calls: [id(S.inbox, 'useSharedItems'), id(S.sheet, 'ShareSheet')] }),
+    codeSymbol(S.inbox, 'useSharedItems', { kind: 'function', change: 'added', head: [9, 11], calls: [id(S.native, 'CapyShare')] }),
+    codeSymbol(S.inbox, '(module)', { kind: 'module', change: 'added', head: [1, 3], calls: [id(S.native, 'CapyShare'), id(S.sheet, 'ShareSheet')] }),
+
+    codeSymbol(S.sheet, 'ShareSheet', { kind: 'function', change: 'added', head: [3, 6], calls: [id(S.native, 'NativeSharedItem'), id(S.send, 'useShareSend')] }),
+    codeSymbol(S.sheet, '(module)', { kind: 'module', change: 'added', head: [1, 2], calls: [id(S.send, 'useShareSend')] }),
+
+    codeSymbol(S.send, 'useShareSend', {
+      kind: 'function',
+      change: 'added',
+      head: [4, 11],
+      calls: [id(S.native, 'NativeSharedItem'), id(S.store, 'MAX_MESSAGE_LENGTH'), id(S.native, 'CapyShare')]
+    }),
+    codeSymbol(S.send, '(module)', { kind: 'module', change: 'added', head: [1, 3], calls: [id(S.native, 'CapyShare'), id(S.store, 'MAX_MESSAGE_LENGTH')] }),
+
+    codeSymbol(S.store, 'MAX_MESSAGE_LENGTH', { kind: 'constant', change: 'added', head: [3, 4] }),
+    codeSymbol(S.store, 'appendMessage', {
+      kind: 'function',
+      change: 'context',
+      head: [5, 8],
+      base: [3, 6],
+      calls: [id(S.store, 'normalizeText')],
+      callLines: { [id(S.store, 'normalizeText')]: [6] }
+    }),
+    codeSymbol(S.store, 'normalizeText', {
+      kind: 'function',
+      change: 'modified',
+      head: [9, 11],
+      base: [7, 9],
+      calls: [id(S.store, 'MAX_MESSAGE_LENGTH')],
+      callLines: { [id(S.store, 'MAX_MESSAGE_LENGTH')]: [10] }
+    }),
+
+    codeSymbol(S.sendTest, 'uploads every shared item', { kind: 'test', change: 'added', head: [3, 6], calls: [id(S.send, 'useShareSend')] }),
+    codeSymbol(S.sendTest, '(module)', { kind: 'module', change: 'added', head: [1, 2], calls: [id(S.send, 'useShareSend')] }),
+
+    codeSymbol(S.moduleTest, 'CapyShareModuleTest', { kind: 'class', change: 'added', head: [3, 8] }),
+    codeSymbol(S.moduleTest, 'CapyShareModuleTest › stagesEveryUri', {
+      kind: 'test',
+      change: 'added',
+      head: [4, 7],
+      parent: 'CapyShareModuleTest',
+      decorators: ['Test'],
+      calls: [id(S.module, 'CapyShareModule'), id(S.module, 'CapyShareModule.stageItems')]
+    }),
+    codeSymbol(S.moduleTest, '(module)', { kind: 'module', change: 'added', head: [1, 2] }),
+
+    codeSymbol(S.dateTest, 'formats today', { kind: 'test', change: 'added', head: [3, 5] }),
+    codeSymbol(S.dateTest, '(module)', { kind: 'module', change: 'added', head: [1, 2] })
+  ]
+}

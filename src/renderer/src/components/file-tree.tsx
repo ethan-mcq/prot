@@ -4,7 +4,7 @@ import { DiffStat } from '@/components/diff-stat'
 import { SinceGuideTag } from '@/components/since-guide-tag'
 import { splitPath } from '@/lib/paths'
 import { useReview } from '@/lib/review-context'
-import { isChangedSinceGuide, isReviewed } from '@/lib/review-session'
+import { isChangedSinceGuide, isFileReviewed } from '@/lib/review-session'
 import { cn } from '@/lib/utils'
 
 export const STATUS_LETTER: Record<FileStatus, { letter: string; className: string }> = {
@@ -48,7 +48,7 @@ export function FileTree({ files, onSelect }: { files: ChangedFile[]; onSelect: 
 function FileLine({ file, onSelect }: { file: ChangedFile; onSelect: () => void }) {
   const { session, dispatch } = useReview()
   const status = STATUS_LETTER[file.status]
-  const reviewed = isReviewed(session, [file.path])
+  const reviewed = isFileReviewed(session, file.path)
   return (
     <li className="group/file relative flex items-center rounded-[5px] transition-colors hover:bg-accent">
       <button

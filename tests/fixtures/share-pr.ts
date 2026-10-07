@@ -271,20 +271,99 @@ const files: FileFixture[] = [
   { filename: 'packages/mobile/assets/share-icon.png', status: 'added', additions: 0, deletions: 0 }
 ]
 
-const fullFiles: Record<string, string> = {
-  'packages/mobile/app.config.ts': [
-    'export default {',
-    ...Array.from({ length: 53 }, (_, i) => `  // config line ${i + 2}`),
-    '    ],',
-    '    ["expo-build-properties", { ios: { deploymentTarget: "16.4" } }],',
-    '    "./plugins/with-scene-lifecycle.js",',
-    '    "./plugins/with-screens-form-sheet.js",',
-    '    "./plugins/with-dev-menu-android.js",',
-    '    "./plugins/with-share-extension.js",',
-    '  ],',
-    '};',
-    ''
-  ].join('\n')
+const MAIN_ACTIVITY = 'packages/mobile/android/app/src/main/java/ai/capy/MainActivity.kt'
+
+const mainActivityBase = [
+  'package ai.capy',
+  '',
+  'import android.content.Intent',
+  'import android.os.Bundle',
+  'import ai.capy.share.CapyShareModule',
+  'import com.facebook.react.ReactActivity',
+  'import com.facebook.react.ReactActivityDelegate',
+  'import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.fabricEnabled',
+  'import com.facebook.react.defaults.DefaultReactActivityDelegate',
+  'import expo.modules.ReactActivityDelegateWrapper',
+  '',
+  'class MainActivity : ReactActivity() {',
+  '  override fun createReactActivityDelegate(): ReactActivityDelegate {',
+  '    return ReactActivityDelegateWrapper(this, BuildConfig.IS_NEW_ARCHITECTURE_ENABLED,',
+  '      DefaultReactActivityDelegate(this, mainComponentName, fabricEnabled))',
+  '  }',
+  '',
+  '  override fun onCreate(savedInstanceState: Bundle?) {',
+  '    setTheme(R.style.AppTheme)',
+  '    super.onCreate(null)',
+  '  }',
+  '',
+  '  override fun getMainComponentName(): String = "main"',
+  '}',
+  ''
+]
+
+const mainActivityHead = [
+  ...mainActivityBase.slice(0, 22),
+  '  override fun onNewIntent(intent: Intent) {',
+  '    super.onNewIntent(intent)',
+  '    CapyShareModule.takeShare(intent)',
+  '  }',
+  '',
+  ...mainActivityBase.slice(22)
+]
+
+const appConfigHead = [
+  'export default {',
+  ...Array.from({ length: 53 }, (_, i) => `  // config line ${i + 2}`),
+  '    ],',
+  '    ["expo-build-properties", { ios: { deploymentTarget: "16.4" } }],',
+  '    "./plugins/with-scene-lifecycle.js",',
+  '    "./plugins/with-screens-form-sheet.js",',
+  '    "./plugins/with-dev-menu-android.js",',
+  '    "./plugins/with-share-extension.js",',
+  '  ],',
+  '};',
+  ''
+]
+
+const testflightBase = [
+  '#!/usr/bin/env bash',
+  'set -euo pipefail',
+  '',
+  'cd "$(dirname "$0")/.."',
+  'xcodebuild -workspace ios/Capy.xcworkspace -scheme Capy \\',
+  '  -archivePath build/Capy.xcarchive archive',
+  '',
+  'echo "archived"',
+  '',
+  '',
+  'xcodebuild -exportArchive \\',
+  '  -archivePath build/Capy.xcarchive \\',
+  '  -exportOptionsPlist ExportOptions.plist',
+  '',
+  'echo "uploaded"',
+  ''
+]
+
+const testflightHead = [
+  ...testflightBase.slice(0, 12),
+  '  -exportOptionsPlist ExportOptions.plist \\',
+  '  -allowProvisioningUpdates',
+  ...testflightBase.slice(13)
+]
+
+const headFiles: Record<string, string> = {
+  [MAIN_ACTIVITY]: mainActivityHead.join('\n'),
+  'packages/mobile/app.config.ts': appConfigHead.join('\n'),
+  'packages/mobile/scripts/testflight.sh': testflightHead.join('\n'),
+  'packages/mobile/README.md': ['# Capy mobile', '', 'Run `pnpm ios`.', '', 'Sharing: use the share sheet from any app to send content to a thread.', ''].join('\n')
+}
+
+const baseFiles: Record<string, string> = {
+  [MAIN_ACTIVITY]: mainActivityBase.join('\n'),
+  'packages/mobile/app.config.ts': appConfigHead.filter((line) => !line.includes('with-share-extension')).join('\n'),
+  'packages/mobile/scripts/testflight.sh': testflightBase.join('\n'),
+  'packages/mobile/README.md': ['# Capy mobile', '', 'Run `pnpm ios`.', ''].join('\n'),
+  'pnpm-lock.yaml': ''
 }
 
 const MODULE_KT = 'packages/mobile/modules/capy-share/android/src/main/java/ai/capy/share/CapyShareModule.kt'
@@ -445,8 +524,9 @@ export const reviews = [
   }
 ]
 
-export function fileContent(state: PullState, path: string): string | null {
-  const full = fullFiles[path]
+export function fileContent(state: PullState, path: string, ref: string | null): string | null {
+  if (ref === BASE_SHA) return baseFiles[path] ?? null
+  const full = headFiles[path]
   if (full !== undefined) return full
   const match = state.files.find((f) => f.filename === path)
   if (!match?.patch) return null

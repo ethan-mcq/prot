@@ -2,6 +2,7 @@ import { join } from 'node:path'
 import { app, BrowserWindow } from 'electron'
 import { AuthService } from './auth'
 import { ChatService } from './chat'
+import { CodeIndexService } from './code-index/service'
 import { GitHubClient } from './github'
 import { GuideService } from './guide-ai'
 import { registerIpc } from './ipc'
@@ -30,7 +31,8 @@ function boot(): void {
   const auth = new AuthService(secrets, (token) => new GitHubClient(token, githubApiUrl.replace(/\/+$/, '')))
   const poller = new InboxPoller(auth, settings)
   const pulls = new PullService(auth, (ref) => poller.latestUpdatedAt(ref))
-  const guide = new GuideService(secrets, settings, pulls, join(app.getPath('userData'), 'guides'))
+  const code = new CodeIndexService(pulls)
+  const guide = new GuideService(secrets, settings, pulls, code, join(app.getPath('userData'), 'guides'))
   const chat = new ChatService(secrets, settings, pulls, broadcast)
 
   auth.onChange((state) => {
@@ -39,7 +41,7 @@ function boot(): void {
   })
   app.on('browser-window-focus', () => poller.refreshIfStale())
 
-  registerIpc({ auth, poller, pulls, guide, chat, settings, secrets })
+  registerIpc({ auth, poller, pulls, guide, code, chat, settings, secrets })
   installMenu()
   auth.restore()
   createMainWindow()

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode, type Ref } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode, type Ref, type RefObject } from 'react'
 import { Loader2, Pencil, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { ChangedFile, DiffHunk, DiffLine, DraftComment, ReviewComment } from '@shared/types'
@@ -64,7 +64,7 @@ function threadKey(path: string, side: string, line: number): string {
 }
 
 export function DiffView({ file }: { file: ChangedFile }) {
-  const { detail, session, dispatch, loadFile } = useReview()
+  const { loadFile } = useReview()
   const lang = languageFor(file.path)
   const hasGaps = file.status === 'modified' || file.status === 'renamed'
   const { rows, oldSide, newSide } = useMemo(
@@ -78,39 +78,12 @@ export function DiffView({ file }: { file: ChangedFile }) {
   const [loadingGap, setLoadingGap] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<string[]>([])
   const contentTokens = useHighlighted(expanded.length > 0 && content ? content : [], lang)
-  const [composerAt, setComposerAt] = useState<string | null>(null)
 
-  const focus = session.focus?.path === file.path ? session.focus : null
-  const focusRow = useRef<HTMLDivElement>(null)
-  const scrolledNonce = useRef<number | null>(null)
   // Shiki swaps plain text for tokens after mount, so scroll once it has settled or the row jumps.
   const settled =
     lang === null || ((newSide.length === 0 || newTokens !== null) && (oldSide.length === 0 || oldTokens !== null))
-  useEffect(() => {
-    if (focus === null || !settled || scrolledNonce.current === focus.nonce) return
-    scrolledNonce.current = focus.nonce
-    focusRow.current?.scrollIntoView({ block: 'center' })
-  }, [focus, settled])
-
-  const comments = useMemo(() => {
-    const byLine = new Map<string, ReviewComment[]>()
-    const roots = new Map<number, string>()
-    const outdated: ReviewComment[] = []
-    for (const comment of detail.reviewComments) {
-      if (comment.path !== file.path) continue
-      const parentKey = comment.inReplyToId === null ? undefined : roots.get(comment.inReplyToId)
-      const key = parentKey ?? (comment.line === null ? null : threadKey(comment.path, comment.side, comment.line))
-      if (key === null) {
-        outdated.push(comment)
-        continue
-      }
-      roots.set(comment.id, key)
-      byLine.set(key, [...(byLine.get(key) ?? []), comment])
-    }
-    return { byLine, outdated }
-  }, [detail.reviewComments, file.path])
-
-  const drafts = session.drafts.filter((d) => d.path === file.path)
+  const focusRow = useFocusScroll(file.path, settled)
+  const comments = useLineComments(file.path)
 
   async function expand(gap: Gap) {
     if (content) {
@@ -174,37 +147,15 @@ export function DiffView({ file }: { file: ChangedFile }) {
             />
           )
         }
-        const anchor = lineAnchor(row.line)
-        const focused = focus !== null && anchor !== null && anchor.side === focus.side && anchor.line === focus.line
-        const key = anchor ? threadKey(file.path, anchor.side, anchor.line) : null
-        const thread = key ? comments.byLine.get(key) : undefined
-        const lineDrafts = anchor
-          ? drafts.filter((d) => d.side === anchor.side && d.line === anchor.line)
-          : []
         return (
-          <div key={row.key}>
-            <LineRow
-              ref={focused ? focusRow : undefined}
-              focused={focused}
-              line={row.line}
-              tokens={tokensFor(row)}
-              onComment={anchor ? () => setComposerAt(row.key) : undefined}
-            />
-            {thread && <CommentThread comments={thread} />}
-            {lineDrafts.map((draft) => (
-              <DraftCard key={draft.id} draft={draft} />
-            ))}
-            {composerAt === row.key && (
-              <Composer
-                label={`Comment on line ${anchor?.line}`}
-                onCancel={() => setComposerAt(null)}
-                onSave={(body) => {
-                  dispatch({ type: 'draft/add', path: file.path, line: row.line, body })
-                  setComposerAt(null)
-                }}
-              />
-            )}
-          </div>
+          <CommentableLine
+            key={row.key}
+            path={file.path}
+            line={row.line}
+            tokens={tokensFor(row)}
+            comments={comments.byLine}
+            focusRef={focusRow}
+          />
         )
       })}
       {comments.outdated.length > 0 && (
@@ -212,6 +163,91 @@ export function DiffView({ file }: { file: ChangedFile }) {
           <p className="px-4 pt-3 text-muted-foreground">Outdated comments</p>
           <CommentThread comments={comments.outdated} />
         </div>
+      )}
+    </div>
+  )
+}
+
+export function useLineComments(path: string): { byLine: Map<string, ReviewComment[]>; outdated: ReviewComment[] } {
+  const { detail } = useReview()
+  return useMemo(() => {
+    const byLine = new Map<string, ReviewComment[]>()
+    const roots = new Map<number, string>()
+    const outdated: ReviewComment[] = []
+    for (const comment of detail.reviewComments) {
+      if (comment.path !== path) continue
+      const parentKey = comment.inReplyToId === null ? undefined : roots.get(comment.inReplyToId)
+      const key = parentKey ?? (comment.line === null ? null : threadKey(comment.path, comment.side, comment.line))
+      if (key === null) {
+        outdated.push(comment)
+        continue
+      }
+      roots.set(comment.id, key)
+      byLine.set(key, [...(byLine.get(key) ?? []), comment])
+    }
+    return { byLine, outdated }
+  }, [detail.reviewComments, path])
+}
+
+// Scrolls the focused row into view once per focus jump, after highlighting has settled.
+export function useFocusScroll(path: string, settled: boolean): RefObject<HTMLDivElement | null> {
+  const { session } = useReview()
+  const focus = session.focus?.path === path ? session.focus : null
+  const focusRow = useRef<HTMLDivElement>(null)
+  const scrolledNonce = useRef<number | null>(null)
+  useEffect(() => {
+    if (focus === null || !settled || scrolledNonce.current === focus.nonce || focusRow.current === null) return
+    scrolledNonce.current = focus.nonce
+    focusRow.current.scrollIntoView({ block: 'center' })
+  }, [focus, settled])
+  return focusRow
+}
+
+export function CommentableLine({
+  path,
+  line,
+  tokens,
+  comments,
+  focusRef,
+  marked = false
+}: {
+  path: string
+  line: DiffLine
+  tokens: Token[] | undefined
+  comments: Map<string, ReviewComment[]>
+  focusRef: RefObject<HTMLDivElement | null>
+  marked?: boolean
+}) {
+  const { session, dispatch } = useReview()
+  const [composing, setComposing] = useState(false)
+  const anchor = lineAnchor(line)
+  const focus = session.focus?.path === path ? session.focus : null
+  const focused = focus !== null && anchor !== null && anchor.side === focus.side && anchor.line === focus.line
+  const thread = anchor ? comments.get(threadKey(path, anchor.side, anchor.line)) : undefined
+  const drafts = anchor ? session.drafts.filter((d) => d.path === path && d.side === anchor.side && d.line === anchor.line) : []
+  return (
+    <div>
+      <LineRow
+        ref={focused ? focusRef : undefined}
+        focused={focused}
+        marked={marked}
+        line={line}
+        tokens={tokens}
+        onComment={anchor ? () => setComposing(true) : undefined}
+      />
+      {thread && <CommentThread comments={thread} />}
+      {drafts.map((draft) => (
+        <DraftCard key={draft.id} draft={draft} />
+      ))}
+      {composing && (
+        <Composer
+          label={`Comment on line ${anchor?.line}`}
+          onCancel={() => setComposing(false)}
+          onSave={(body) => {
+            dispatch({ type: 'draft/add', path, line, body })
+            setComposing(false)
+          }}
+        />
       )}
     </div>
   )
@@ -226,12 +262,14 @@ const ROW_TONE = {
 function LineRow({
   ref,
   focused = false,
+  marked = false,
   line,
   tokens,
   onComment
 }: {
   ref?: Ref<HTMLDivElement>
   focused?: boolean
+  marked?: boolean
   line: DiffLine
   tokens: Token[] | undefined
   onComment?: () => void
@@ -245,11 +283,13 @@ function LineRow({
       className={cn(
         'group/row relative flex min-w-0',
         tone.row,
+        marked && 'bg-command/[0.06] dark:bg-command/[0.09]',
         focused && 'bg-command/12 ring-1 ring-command/55 ring-inset dark:bg-command/15'
       )}
       data-new-line={line.newLine ?? undefined}
     >
       {tone.gutter && <span aria-hidden className={cn('absolute inset-y-0 left-0 w-[4px]', tone.gutter)} />}
+      {marked && !tone.gutter && <span aria-hidden className="absolute inset-y-0 left-0 w-[2px] bg-command/60" />}
       <span className="w-10 shrink-0 pr-2 text-right text-muted-foreground/55 select-none tabular-nums">
         {line.oldLine ?? ''}
       </span>

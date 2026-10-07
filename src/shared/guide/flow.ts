@@ -38,7 +38,8 @@ function toFlowNode(node: Node, chapterOf: Map<string, string>): FlowNode {
     label: symbolLabel(node.decl),
     file: node.decl.path,
     change: node.decl.change,
-    chapterId: chapterOf.get(node.decl.path) ?? null
+    chapterId: chapterOf.get(node.decl.path) ?? null,
+    symbolId: null
   }
 }
 
@@ -349,7 +350,8 @@ function fileFlow(files: ReviewFile[], chapterOf: Map<string, string>): Flow {
       label: baseName(file.path),
       file: file.path,
       change: file.file.status === 'added' ? 'added' : 'modified',
-      chapterId: chapterOf.get(file.path) ?? null
+      chapterId: chapterOf.get(file.path) ?? null,
+      symbolId: null
     })
     for (const target of importedPaths(file, paths)) edges.push({ from: file.path, to: target })
   }

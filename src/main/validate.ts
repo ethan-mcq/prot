@@ -1,5 +1,12 @@
 import type {
+  CardContext,
+  CardRole,
   ChatMessage,
+  CodeChange,
+  LineRange,
+  SectionContext,
+  StoryCard,
+  SymbolKind,
   ChatRequest,
   DiffSide,
   DraftComment,
@@ -101,14 +108,69 @@ function parseChatMessage(raw: unknown): ChatMessage {
   }
 }
 
+const CARD_ROLES: readonly CardRole[] = ['entry', 'step', 'helper', 'data', 'test']
+const SYMBOL_KINDS: readonly SymbolKind[] = [
+  'function',
+  'method',
+  'class',
+  'interface',
+  'type',
+  'enum',
+  'constant',
+  'test',
+  'module'
+]
+const CODE_CHANGES: readonly CodeChange[] = ['added', 'modified', 'deleted', 'context']
+
+function parseRange(raw: unknown, what: string): LineRange {
+  const value = obj(raw, what)
+  return { start: int(value.start, `${what} start`), end: int(value.end, `${what} end`) }
+}
+
+function parseCard(raw: unknown): StoryCard {
+  const value = obj(raw, 'card')
+  return {
+    symbolId: str(value.symbolId, 'card symbolId'),
+    role: oneOf(value.role, CARD_ROLES, 'card role'),
+    seeChapterId: strOrNull(value.seeChapterId, 'card seeChapterId'),
+    excerpt: value.excerpt === null ? null : list(value.excerpt, 'card excerpt').map((range) => parseRange(range, 'excerpt'))
+  }
+}
+
 function parseChapter(raw: unknown): NonNullable<ViewContext['chapter']> {
   const value = obj(raw, 'chapter')
   return {
     id: str(value.id, 'chapter id'),
     title: str(value.title, 'chapter title'),
     summary: str(value.summary, 'chapter summary'),
-    files: list(value.files, 'chapter files').map((file) => str(file, 'chapter file'))
+    files: list(value.files, 'chapter files').map((file) => str(file, 'chapter file')),
+    cards: list(value.cards, 'chapter cards').map(parseCard)
   }
+}
+
+function parseCardContext(raw: unknown): CardContext {
+  const value = obj(raw, 'section card')
+  return {
+    qualifiedName: str(value.qualifiedName, 'card name'),
+    kind: oneOf(value.kind, SYMBOL_KINDS, 'card kind'),
+    path: str(value.path, 'card path'),
+    lines: value.lines === null ? null : parseRange(value.lines, 'card lines'),
+    change: oneOf(value.change, CODE_CHANGES, 'card change')
+  }
+}
+
+function parseSection(raw: unknown): SectionContext {
+  const value = obj(raw, 'section')
+  let focused: SectionContext['focused'] = null
+  if (value.focused !== null) {
+    const fields = obj(value.focused, 'focused card')
+    focused = {
+      qualifiedName: str(fields.qualifiedName, 'focused card name'),
+      path: str(fields.path, 'focused card path'),
+      code: str(fields.code, 'focused card code')
+    }
+  }
+  return { cards: list(value.cards, 'section cards').map(parseCardContext), focused }
 }
 
 function parseFlow(raw: unknown): NonNullable<ViewContext['flow']> {
@@ -120,7 +182,8 @@ function parseFlow(raw: unknown): NonNullable<ViewContext['flow']> {
       label: str(fields.label, 'flow node label'),
       file: strOrNull(fields.file, 'flow node file'),
       change: oneOf(fields.change, ['added', 'modified', 'context'] as const, 'flow node change'),
-      chapterId: strOrNull(fields.chapterId, 'flow node chapterId')
+      chapterId: strOrNull(fields.chapterId, 'flow node chapterId'),
+      symbolId: strOrNull(fields.symbolId, 'flow node symbolId')
     }
   })
   const edges = list(value.edges, 'flow edges').map((edge) => {
@@ -170,6 +233,7 @@ function parseViewContext(raw: unknown): ViewContext {
     chapter: value.chapter === null ? null : parseChapter(value.chapter),
     flow: value.flow === null ? null : parseFlow(value.flow),
     file: value.file === null ? null : parseFile(value.file),
+    section: value.section === null ? null : parseSection(value.section),
     selection: strOrNull(value.selection, 'selection')
   }
 }

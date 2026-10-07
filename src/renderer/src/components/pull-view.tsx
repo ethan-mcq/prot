@@ -36,6 +36,7 @@ import {
   chapterReviewKeys,
   guideSteps,
   initSession,
+  isFileReviewed,
   isReviewed,
   readStored,
   reviewReducer,
@@ -144,6 +145,17 @@ function ReviewScreen({ initial, viewer }: { initial: PullDetail; viewer: string
     return tree.current.paths
   }, [ref, sha])
 
+  useEffect(() => {
+    let live = true
+    window.prot.guide
+      .story(ref)
+      .then((guide) => live && dispatch({ type: 'story/loaded', guide }))
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [ref, sha])
+
   const requestAi = useCallback(
     async (refresh: boolean) => {
       dispatch({ type: 'ai/start' })
@@ -195,7 +207,7 @@ function ReviewScreen({ initial, viewer }: { initial: PullDetail; viewer: string
     [detail, session, loadFile, loadTree]
   )
 
-  const reviewedCount = detail.files.filter((file) => session.reviewed.includes(file.path)).length
+  const reviewedCount = detail.files.filter((file) => isFileReviewed(session, file.path)).length
   const last = session.step === steps.length - 1
 
   return (
@@ -324,7 +336,7 @@ function TitleButton({ className, ...props }: ComponentProps<'button'>) {
 
 function stepLabel(step: GuideStep, chapters: Chapter[]): string {
   if (step.kind === 'overview') return 'Overview'
-  if (step.kind === 'flow') return 'Flow'
+  if (step.kind === 'flow') return 'Story map'
   return `${pad2(step.index + 1)} ${chapters[step.index]?.title ?? ''}`
 }
 
@@ -368,7 +380,7 @@ function StepTabs() {
             {step.kind === 'chapter' && chapter ? (
               <span className="max-w-44 truncate">{chapter.title}</span>
             ) : (
-              <span>{step.kind === 'overview' ? 'Overview' : 'Flow'}</span>
+              <span>{step.kind === 'overview' ? 'Overview' : 'Story map'}</span>
             )}
           </button>
         )

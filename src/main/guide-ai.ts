@@ -1,8 +1,9 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { pullKey, type Guide, type PullDetail, type PullRef } from '@shared/types'
-import { GUIDE_SCHEMA, buildGuidePrompt, parseAiGuide } from '@shared/guide'
+import { GUIDE_SCHEMA, buildGuidePrompt, buildStoryGuide, parseAiGuide } from '@shared/guide'
 import { createClient, describeAiError, modelParams, refusalMessage } from './claude'
+import type { CodeIndexService } from './code-index/service'
 import type { PullService } from './pulls'
 import type { SecretsStore } from './secrets'
 import type { SettingsStore } from './settings'
@@ -20,6 +21,9 @@ function isCachedGuide(value: unknown): value is Guide {
     guide.source === 'ai' &&
     typeof guide.headSha === 'string' &&
     Array.isArray(guide.chapters) &&
+    typeof guide.symbols === 'object' &&
+    guide.symbols !== null &&
+    typeof (guide.overview as { synopsis?: unknown } | undefined)?.synopsis === 'string' &&
     typeof guide.coverage === 'object' &&
     guide.coverage !== null
   )
@@ -32,6 +36,7 @@ export class GuideService {
     private readonly secrets: SecretsStore,
     private readonly settings: SettingsStore,
     private readonly pulls: PullService,
+    private readonly code: CodeIndexService,
     private readonly cacheDir: string
   ) {}
 
@@ -50,7 +55,7 @@ export class GuideService {
       const cached = await this.readCache(file)
       if (cached) return cached
     }
-    const guide = await this.generate(await this.pulls.cached(ref))
+    const guide = await this.generate(ref, await this.pulls.cached(ref))
     await this.writeCache(file, guide)
     return guide
   }
@@ -71,9 +76,11 @@ export class GuideService {
     await rename(tmp, file)
   }
 
-  private async generate(detail: PullDetail): Promise<Guide> {
+  private async generate(ref: PullRef, detail: PullDetail): Promise<Guide> {
     const client = await createClient(this.secrets)
-    const prompt = buildGuidePrompt(detail)
+    const { index, heads } = await this.code.index(ref, detail)
+    const story = buildStoryGuide(detail, index)
+    const prompt = buildGuidePrompt(detail, story, heads)
     const model = this.settings.get().model
     let message
     try {
@@ -101,6 +108,6 @@ export class GuideService {
     } catch {
       throw new Error('Claude returned a guide that was not valid JSON. Try again.')
     }
-    return parseAiGuide(raw, detail)
+    return parseAiGuide(raw, detail, story)
   }
 }

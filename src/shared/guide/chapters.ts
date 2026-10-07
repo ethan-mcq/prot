@@ -311,7 +311,7 @@ export function planChapters(files: ReviewFile[], decls: Map<string, Decl[]>): C
 export function numberChapters(drafts: ChapterDraft[]): Chapter[] {
   const chapters: Chapter[] = []
   for (const draft of drafts) {
-    chapters.push({ id: `ch-${chapters.length + 1}`, title: draft.title, summary: draft.summary, files: draft.files })
+    chapters.push({ id: `ch-${chapters.length + 1}`, title: draft.title, summary: draft.summary, files: draft.files, cards: [] })
   }
   return chapters
 }

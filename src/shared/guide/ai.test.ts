@@ -1,78 +1,115 @@
 import { describe, expect, it } from 'vitest'
-import type { ChangedFile } from '../types'
-import { capySharePull, changed, KOTLIN_MODULE, MAIN_ACTIVITY, pullWith, SWIFT_MODULE } from './fixtures'
-import { buildGuidePrompt, GUIDE_SCHEMA, parseAiGuide } from './index'
+import type { ChangedFile, Guide } from '../types'
+import { capyStoryIndex, capyStoryPull, changed, pullWith, STORY } from './fixtures'
+import { buildGuidePrompt, buildStoryGuide, GUIDE_SCHEMA, parseAiGuide } from './index'
+
+const story = buildStoryGuide(capyStoryPull, capyStoryIndex)
+const sym = (path: string, name: string) => `${path}#${name}`
+
+function outline(guide: Guide): string[] {
+  return guide.chapters.map((chapter) => {
+    const cards = chapter.cards.map((card) => `${card.role} ${guide.symbols[card.symbolId]?.qualifiedName}`)
+    return [chapter.title, ...(cards.length > 0 ? cards : chapter.files)].join(' | ')
+  })
+}
 
 describe('parseAiGuide', () => {
-  it('repairs unknown paths, duplicate files, uncovered files and dangling edges', () => {
-    const raw = {
-      overview: { summary: '  Share text from other apps into a thread. ', points: ['Native share module', 42, ''] },
-      flow: {
-        caption: 'How shared content reaches a thread',
-        nodes: [
-          { id: 'intent', label: 'onNewIntent()', file: MAIN_ACTIVITY, change: 'added' },
-          { id: 'take', label: 'takeShare()', file: KOTLIN_MODULE, change: 'added' },
-          { id: 'ghost', label: 'Ghost', file: 'not/in/this/pr.ts', change: 'renamed' },
-          { id: 'intent', label: 'duplicate id', file: null, change: 'added' }
-        ],
-        edges: [
-          { from: 'intent', to: 'take' },
-          { from: 'take', to: 'missing' },
-          { from: 'intent', to: 'take' }
+  const raw = {
+    overview: { risk: { level: 'severe', reason: 'Made up.' }, synopsis: '  Shares items from other apps into a thread. ', points: ['Native intake', 42, ''] },
+    caption: 'How a shared item reaches a thread',
+    sections: [
+      {
+        title: 'Native share intake',
+        summary: 'The activity hands the intent to the module.',
+        symbols: [
+          sym(STORY.activity, 'MainActivity.onNewIntent'),
+          sym(STORY.module, 'CapyShareModule.takeShare'),
+          'ghost.kt#Nope',
+          sym(STORY.module, 'CapyShareModule.takeShare')
         ]
       },
-      chapters: [
-        {
-          title: 'Native share module',
-          summary: 'Kotlin and Swift sides.',
-          files: [KOTLIN_MODULE, SWIFT_MODULE, 'packages/mobile/ghost.kt']
-        },
-        { title: 'Android entry point', summary: 'Hands the intent over.', files: [MAIN_ACTIVITY, KOTLIN_MODULE] },
-        { title: 'Invented', summary: 'Nothing real here.', files: ['nope.ts'] }
+      {
+        title: 'Message cleanup',
+        summary: 'Whitespace collapses before sending.',
+        symbols: [sym(STORY.store, 'normalizeText'), sym(STORY.module, 'CapyShareModule.takeShare')]
+      },
+      { title: 'Invented', summary: '', symbols: ['nope.ts#nothing'] }
+    ],
+    files: [{ title: 'App config', summary: 'Registers the share plugin.', files: [STORY.config, 'ghost.json'] }]
+  }
+
+  it('drops unknown ids, keeps each changed symbol once, brings entries along, and re-appends missed symbols where the story put them', () => {
+    const guide = parseAiGuide(raw, capyStoryPull, story)
+    expect({ source: guide.source, headSha: guide.headSha, outline: outline(guide) }).toEqual({
+      source: 'ai',
+      headSha: 'head123',
+      outline: [
+        [
+          'Native share intake',
+          'entry MainActivity.onNewIntent',
+          'step CapyShareModule.takeShare',
+          'step CapyShareModule',
+          'helper CapyShareModule.stageItems',
+          'helper CapyShareModule.readUris',
+          'helper SharedItem',
+          'helper CapyShareModule.mimeOf',
+          'helper ShareInbox',
+          'helper ShareInbox.push',
+          'data MAX_SHARE_ITEMS',
+          'data (module)',
+          'data (module)',
+          'data (module)',
+          'test CapyShareModuleTest',
+          'test CapyShareModuleTest › stagesEveryUri',
+          'test (module)'
+        ].join(' | '),
+        'Message cleanup | entry appendMessage | step normalizeText | data MAX_MESSAGE_LENGTH',
+        [
+          'New ShareInbox and what it calls',
+          'entry ShareInbox',
+          'step useSharedItems',
+          'step ShareSheet',
+          'helper useShareSend',
+          'data CapyShare',
+          'data NativeSharedItem',
+          'data CapyShareModule',
+          'data (module)',
+          'data (module)',
+          'data (module)',
+          'data (module)',
+          'test uploads every shared item',
+          'test (module)'
+        ].join(' | '),
+        'Other tests | test formats today | test (module)',
+        `App config | ${STORY.config}`
       ]
-    }
-
-    const guide = parseAiGuide(raw, capySharePull)
-
-    expect(guide.source).toBe('ai')
-    expect(guide.headSha).toBe('head123')
-    expect(guide.overview).toEqual({
-      summary: 'Share text from other apps into a thread.',
-      points: ['Native share module']
     })
-    expect(guide.chapters.slice(0, 2).map(({ id, title, files }) => ({ id, title, files }))).toEqual([
-      { id: 'ch-1', title: 'Native share module', files: [KOTLIN_MODULE, SWIFT_MODULE] },
-      { id: 'ch-2', title: 'Android entry point', files: [MAIN_ACTIVITY] }
-    ])
-    expect(guide.chapters[0]?.summary).toBe('Kotlin and Swift sides.')
+    const shown = guide.chapters.flatMap((chapter) => chapter.cards).filter((card) => guide.symbols[card.symbolId]?.change !== 'context')
+    expect({ shown: shown.length, distinct: new Set(shown.map((card) => card.symbolId)).size }).toEqual({ shown: 33, distinct: 33 })
+  })
 
-    const covered = [KOTLIN_MODULE, SWIFT_MODULE, MAIN_ACTIVITY]
-    const leftovers: string[] = []
-    for (const file of capySharePull.files) {
-      if (!covered.includes(file.path)) leftovers.push(file.path)
-    }
-    const placed = guide.chapters.slice(2).flatMap((chapter) => chapter.files)
-    expect([...placed].sort()).toEqual([...leftovers].sort())
-    for (const [index, chapter] of guide.chapters.entries()) expect(chapter.id).toBe(`ch-${index + 1}`)
-    expect(guide.flow).toEqual({
-      caption: 'How shared content reaches a thread',
-      nodes: [
-        { id: 'intent', label: 'onNewIntent()', file: MAIN_ACTIVITY, change: 'added', chapterId: 'ch-2' },
-        { id: 'take', label: 'takeShare()', file: KOTLIN_MODULE, change: 'added', chapterId: 'ch-1' },
-        { id: 'ghost', label: 'Ghost', file: null, change: 'context', chapterId: null }
-      ],
-      edges: [{ from: 'intent', to: 'take' }]
+  it('keeps a known risk level and falls back to the estimated risk for an unknown one', () => {
+    const unknown = parseAiGuide(raw, capyStoryPull, story).overview
+    const known = parseAiGuide(
+      { ...raw, overview: { ...raw.overview, risk: { level: 'high', reason: 'Every share now goes through takeShare.' } } },
+      capyStoryPull,
+      story
+    ).overview
+    expect({ unknown, known: known.risk }).toEqual({
+      unknown: { risk: story.overview.risk, synopsis: 'Shares items from other apps into a thread.', points: ['Native intake'] },
+      known: { level: 'high', reason: 'Every share now goes through takeShare.' }
     })
   })
 
   it.each([
     [null, /not a JSON object/],
     ['{"overview": ', /not valid JSON/],
-    [{ chapters: [] }, /overview\.summary/],
-    [{ overview: { summary: 'x' }, chapters: 'all of them' }, /chapters array/],
-    [{ overview: { summary: 'x' }, chapters: [{ title: 'Made up', files: ['nope.ts'] }] }, /none of the changed files/]
-  ])('rejects unusable output %#', (raw, message) => {
-    expect(() => parseAiGuide(raw, capySharePull)).toThrow(message)
+    [{ sections: [] }, /missing the overview/],
+    [{ overview: { synopsis: 'x' }, sections: 'all of them' }, /sections array/],
+    [{ overview: { risk: { level: 'low', reason: 'r' } }, sections: [] }, /overview\.synopsis/],
+    [{ overview: { synopsis: 'x' }, sections: [{ title: 'Made up', symbols: ['nope.ts#x'] }] }, /none of the changed symbols/]
+  ])('rejects unusable output %#', (input, message) => {
+    expect(() => parseAiGuide(input, capyStoryPull, story)).toThrow(message)
   })
 })
 
@@ -100,23 +137,33 @@ describe('GUIDE_SCHEMA', () => {
 })
 
 describe('buildGuidePrompt', () => {
-  it('fits patches into the budget core-first and still lists every file', () => {
+  it('sends the story and its code with diff markers, and never the PR title or description', () => {
+    const { system, user } = buildGuidePrompt(capyStoryPull, story, {})
+    const sent = `${system}\n${user}`
+    expect({
+      title: sent.includes('Share to Capy from other apps'),
+      body: sent.includes('straight into a Capy thread'),
+      card: user.includes(`- ${sym(STORY.store, 'normalizeText')} (function, modified, step, lines 9-11)`),
+      code: user.includes('-  return text.trim();\n+  return text.replace(')
+    }).toEqual({ title: false, body: false, card: true, code: true })
+  })
+
+  it('fits code into the budget core-first and still lists every file', () => {
     const files: ChangedFile[] = []
-    for (let n = 0; n < 5; n++) {
+    for (let n = 0; n < 10; n++) {
       const lines = ['@@ -0,0 +1,2000 @@']
       for (let line = 0; line < 2000; line++) lines.push(`+export const value${n}_${line} = ${line}`)
       files.push(changed(`src/core${n}.ts`, 'added', lines))
     }
     files.push(changed('package-lock.json', 'modified', ['@@ -1,1 +1,1 @@', '-"a": 1', '+"a": 2']))
     files.push({ ...changed('assets/logo.png', 'added', []), patch: null })
-
-    const { user } = buildGuidePrompt(pullWith(files, 'Splits the core into parts.'))
+    const detail = pullWith(files)
+    const { user } = buildGuidePrompt(detail, buildStoryGuide(detail, { headSha: 'head123', symbols: [], skipped: [] }), {})
 
     expect(user.length).toBeLessThan(185_000)
-    expect(user).toContain('Splits the core into parts.')
     for (const file of files) expect(user).toContain(file.path)
-    for (let n = 0; n < 5; n++) expect(user).toContain(`<patch path="src/core${n}.ts">`)
-    expect(user).toContain('[patch truncated, ')
+    expect(user).toContain('<patch path="src/core0.ts">')
+    expect(user).toContain('[truncated, ')
     expect(user).not.toContain('<patch path="package-lock.json">')
     expect(user).not.toContain('<patch path="assets/logo.png">')
   })

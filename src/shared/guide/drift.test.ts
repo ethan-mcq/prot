@@ -7,10 +7,13 @@ const QUEUE = 'packages/mobile/src/share/share-queue.ts'
 
 const aiGuide = parseAiGuide(
   {
-    overview: { summary: 'Share text from other apps into a thread.', points: [] },
-    chapters: [{ title: 'Native share module', summary: '', files: [KOTLIN_MODULE, SWIFT_MODULE] }]
+    overview: { risk: { level: 'low', reason: 'Small.' }, synopsis: 'Shares text from other apps into a thread.', points: [] },
+    caption: '',
+    sections: [],
+    files: [{ title: 'Native share module', summary: '', files: [KOTLIN_MODULE, SWIFT_MODULE] }]
   },
-  capySharePull
+  capySharePull,
+  buildHeuristicGuide(capySharePull)
 )
 
 function pushed(edit: (files: ChangedFile[]) => ChangedFile[]): PullDetail {

@@ -1,5 +1,6 @@
 import { lineAnchor, parsePatch } from '../diff'
-import type { ChangedFile, DiffLine, DiffLocation, FlowNode } from '../types'
+import { symbolRows } from '../symbol-rows'
+import type { ChangedFile, CodeSymbol, DiffLine, DiffLocation, FlowNode } from '../types'
 import { baseName } from './files'
 import { declares } from './symbols'
 
@@ -42,7 +43,26 @@ function locationOf(candidate: Candidate): DiffLocation | null {
   return anchor === null ? null : { path: candidate.path, ...anchor }
 }
 
-export function locateFlowNode(node: FlowNode, files: ChangedFile[]): DiffLocation | null {
+export function locateSymbol(symbol: CodeSymbol, symbols: Record<string, CodeSymbol>, files: ChangedFile[]): DiffLocation {
+  const patch = files.find((file) => file.path === symbol.path)?.patch ?? null
+  const children = Object.values(symbols).filter((child) => child.parentId === symbol.id)
+  for (const row of symbolRows(symbol, children, patch === null ? [] : parsePatch(patch), null)) {
+    if (row.kind !== 'line' || row.line.kind === 'context') continue
+    const anchor = lineAnchor(row.line)
+    if (anchor !== null) return { path: symbol.path, ...anchor }
+  }
+  if (symbol.head !== null) return { path: symbol.path, line: symbol.head.start, side: 'RIGHT' }
+  return { path: symbol.path, line: symbol.base?.start ?? 1, side: 'LEFT' }
+}
+
+export function locateFlowNode(
+  node: FlowNode,
+  files: ChangedFile[],
+  symbols: Record<string, CodeSymbol> = {}
+): DiffLocation | null {
+  const symbol = node.symbolId === null ? undefined : symbols[node.symbolId]
+  if (symbol !== undefined) return locateSymbol(symbol, symbols, files)
+
   const scope: ChangedFile[] = []
   for (const file of files) {
     if (node.file === null || file.path === node.file) scope.push(file)

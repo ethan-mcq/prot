@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { DiffLocation } from '../types'
-import { capySharePull, changed, KOTLIN_MODULE, MAIN_ACTIVITY, SWIFT_MODULE } from './fixtures'
+import { capySharePull, capyStoryIndex, capyStoryPull, changed, KOTLIN_MODULE, MAIN_ACTIVITY, STORY, SWIFT_MODULE } from './fixtures'
 import { locateFlowNode } from './index'
 
 const MOBILE = 'packages/mobile'
@@ -25,7 +25,18 @@ describe('locateFlowNode', () => {
     ['file node lands on the first change', 'send.ts', `${MOBILE}/src/share/send.ts`, { path: `${MOBILE}/src/share/send.ts`, line: 1, side: 'RIGHT' }],
     ['miss', 'uploadAll()', SWIFT_MODULE, null]
   ])('%s', (_case, label, file, expected) => {
-    const node = { id: label, label, file, change: 'added' as const, chapterId: null }
+    const node = { id: label, label, file, change: 'added' as const, chapterId: null, symbolId: null }
     expect(locateFlowNode(node, files)).toEqual(expected)
+  })
+
+  const symbols = Object.fromEntries(capyStoryIndex.symbols.map((symbol) => [symbol.id, symbol]))
+  it.each<[string, string, DiffLocation]>([
+    ['a modified method lands on its added line, not its declaration', `${STORY.activity}#MainActivity.onNewIntent`, { path: STORY.activity, line: 13, side: 'RIGHT' }],
+    ['a changed function lands on its removed line when that comes first', `${STORY.store}#normalizeText`, { path: STORY.store, line: 8, side: 'LEFT' }],
+    ['an added class lands on its own first line, skipping its members', `${STORY.module}#CapyShareModule`, { path: STORY.module, line: 8, side: 'RIGHT' }],
+    ['an unchanged entry lands on its first line', `${STORY.store}#appendMessage`, { path: STORY.store, line: 5, side: 'RIGHT' }]
+  ])('symbol node: %s', (_case, symbolId, expected) => {
+    const node = { id: symbolId, label: 'whatever', file: null, change: 'added' as const, chapterId: null, symbolId }
+    expect(locateFlowNode(node, capyStoryPull.files, symbols)).toEqual(expected)
   })
 })

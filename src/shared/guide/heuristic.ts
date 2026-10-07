@@ -25,8 +25,9 @@ export function buildHeuristicGuide(detail: PullDetail): Guide {
   return {
     source: 'heuristic',
     headSha: detail.head.sha,
-    overview: overviewFor(detail, chapters),
+    overview: overviewFor(detail, chapters, {}),
     flow: buildFlow(inChapterOrder(files, chapters), decls, chapterIndex(chapters)),
-    chapters
+    chapters,
+    symbols: {}
   }
 }

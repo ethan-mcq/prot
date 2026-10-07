@@ -85,7 +85,7 @@ export async function startGitHub(): Promise<GitHubFixture> {
     }
     if (p.startsWith(`${prPath}/contents/`)) {
       const path = decodeURIComponent(p.slice(`${prPath}/contents/`.length))
-      const content = pr.fileContent(state, path)
+      const content = pr.fileContent(state, path, url.searchParams.get('ref'))
       if (content === null) return json(res, 404, { message: 'Not Found' })
       res.writeHead(200, { 'content-type': 'text/plain' })
       return res.end(content)
@@ -112,52 +112,53 @@ export async function startGitHub(): Promise<GitHubFixture> {
 
 export const CHAT_REPLY = 'The share flow starts when onNewIntent hands the intent to takeShare.'
 
+const MAIN_ACTIVITY = 'packages/mobile/android/app/src/main/java/ai/capy/MainActivity.kt'
+const MODULE_KT = 'packages/mobile/modules/capy-share/android/src/main/java/ai/capy/share/CapyShareModule.kt'
+const PLUGIN = 'packages/mobile/plugins/with-share-extension.js'
+const NATIVE = 'packages/mobile/modules/capy-share/index.ts'
+
 export const aiGuide = {
   overview: {
-    summary: 'Adds mobile sharing so external content reaches a Capy thread on iOS and Android.',
-    points: [
-      'Register the share extension and Android share intents.',
-      'Stage shared items through the CapyShare native module.',
-      'Pick a destination thread and upload.'
-    ]
+    risk: { level: 'medium', reason: 'Every Android share now runs through CapyShareModule.takeShare, which no test exercises.' },
+    synopsis:
+      'Android hands shared intents to a new native module that stages the items. The share inbox reads them through the CapyShare bridge and the sheet uploads them to a thread. A config plugin registers the share extension at prebuild.',
+    points: ['Register the share extension and Android share intents.', 'Stage shared items through the CapyShare native module.', 'Pick a destination thread and upload.']
   },
-  flow: {
-    caption: 'Shared content reaches a thread',
-    nodes: [
-      { id: 'n1', label: 'MainActivity', file: 'packages/mobile/android/app/src/main/java/ai/capy/MainActivity.kt', change: 'context' },
-      { id: 'n2', label: 'onNewIntent', file: 'packages/mobile/android/app/src/main/java/ai/capy/MainActivity.kt', change: 'added' },
-      { id: 'n3', label: 'takeShare()', file: 'packages/mobile/modules/capy-share/android/src/main/java/ai/capy/share/CapyShareModule.kt', change: 'added' },
-      { id: 'n4', label: 'ShareInbox', file: 'packages/mobile/src/share/share-inbox.tsx', change: 'added' },
-      { id: 'n5', label: 'ShareSheet', file: 'packages/mobile/src/share/share-sheet.tsx', change: 'added' },
-      { id: 'n6', label: 'useShareSend()', file: 'packages/mobile/src/share/send.ts', change: 'added' }
-    ],
-    edges: [
-      { from: 'n1', to: 'n2' },
-      { from: 'n2', to: 'n3' },
-      { from: 'n3', to: 'n4' },
-      { from: 'n4', to: 'n5' },
-      { from: 'n5', to: 'n6' }
-    ]
-  },
-  chapters: [
+  caption: 'Shared content reaches a thread',
+  sections: [
     {
       title: 'Build the share extension',
       summary: 'Prebuild registers the share extension plugin and Android share intents.',
-      files: ['packages/mobile/app.config.ts', 'packages/mobile/plugins/with-share-extension.js', 'packages/mobile/scripts/testflight.sh']
+      symbols: [`${PLUGIN}#withShareExtension`, `${PLUGIN}#addShareTarget`, `${PLUGIN}#withAndroidShareIntents`]
     },
     {
       title: 'Stage and upload shared files',
       summary: 'The native module stages shared content and exposes uploads to JavaScript.',
-      files: [
-        'packages/mobile/android/app/src/main/java/ai/capy/MainActivity.kt',
-        'packages/mobile/modules/capy-share/android/src/main/java/ai/capy/share/CapyShareModule.kt',
-        'packages/mobile/modules/capy-share/index.ts'
+      symbols: [
+        `${MAIN_ACTIVITY}#MainActivity.onNewIntent`,
+        `${MODULE_KT}#CapyShareModule`,
+        `${MODULE_KT}#CapyShareModule.takeShare`,
+        `${MODULE_KT}#CapyShareModule.stageItems`,
+        `${NATIVE}#CapyShare`,
+        `${NATIVE}#CapyShareModule`
       ]
     },
     {
       title: 'Choose a thread and send',
       summary: 'The share inbox and sheet let the user pick a thread, then send uploads.',
-      files: ['packages/mobile/src/share/share-inbox.tsx', 'packages/mobile/src/share/share-sheet.tsx', 'packages/mobile/src/share/send.ts']
+      symbols: [
+        'packages/mobile/src/share/share-inbox.tsx#ShareInbox',
+        'packages/mobile/src/share/share-inbox.tsx#useSharedItems',
+        'packages/mobile/src/share/share-sheet.tsx#ShareSheet',
+        'packages/mobile/src/share/send.ts#useShareSend'
+      ]
+    }
+  ],
+  files: [
+    {
+      title: 'Release config',
+      summary: 'The app config loads the plugin and the TestFlight script allows provisioning updates.',
+      files: ['packages/mobile/app.config.ts', 'packages/mobile/scripts/testflight.sh']
     }
   ]
 }

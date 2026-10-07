@@ -118,6 +118,51 @@ export type FileRole =
   | 'deps'
   | 'assets'
 
+export type SymbolKind =
+  | 'function'
+  | 'method'
+  | 'class'
+  | 'interface'
+  | 'type'
+  | 'enum'
+  | 'constant'
+  | 'test'
+  | 'module'
+
+export type CodeChange = 'added' | 'modified' | 'deleted' | 'context'
+
+export type LineRange = { start: number; end: number }
+
+export type CodeSymbol = {
+  id: string
+  path: string
+  name: string
+  qualifiedName: string
+  kind: SymbolKind
+  parentId: string | null
+  head: LineRange | null
+  base: LineRange | null
+  change: CodeChange
+  calls: string[]
+  callLines: Record<string, number[]>
+  decorators: string[]
+}
+
+export type CodeIndex = {
+  headSha: string
+  symbols: CodeSymbol[]
+  skipped: string[]
+}
+
+export type CardRole = 'entry' | 'step' | 'helper' | 'data' | 'test'
+
+export type StoryCard = {
+  symbolId: string
+  role: CardRole
+  seeChapterId: string | null
+  excerpt: LineRange[] | null
+}
+
 export type FlowNodeChange = 'added' | 'modified' | 'context'
 
 export type FlowNode = {
@@ -126,6 +171,7 @@ export type FlowNode = {
   file: string | null
   change: FlowNodeChange
   chapterId: string | null
+  symbolId: string | null
 }
 
 export type FlowEdge = { from: string; to: string }
@@ -141,17 +187,28 @@ export type Chapter = {
   title: string
   summary: string
   files: string[]
+  cards: StoryCard[]
 }
 
 export type FileFingerprint = { hash: string; additions: number; deletions: number }
 
 export type GuideCoverage = Record<string, FileFingerprint>
 
+export const RISK_LEVELS = ['low', 'medium', 'high'] as const
+export type RiskLevel = (typeof RISK_LEVELS)[number]
+
+export type GuideOverview = {
+  risk: { level: RiskLevel; reason: string }
+  synopsis: string
+  points: string[]
+}
+
 type GuideContent = {
   headSha: string
-  overview: { summary: string; points: string[] }
+  overview: GuideOverview
   flow: Flow
   chapters: Chapter[]
+  symbols: Record<string, CodeSymbol>
 }
 
 export type Guide =
@@ -230,7 +287,21 @@ export type ViewContext = {
   chapter: Chapter | null
   flow: Flow | null
   file: { path: string; patch: string | null; visibleLines: [number, number] | null } | null
+  section: SectionContext | null
   selection: string | null
+}
+
+export type CardContext = {
+  qualifiedName: string
+  kind: SymbolKind
+  path: string
+  lines: LineRange | null
+  change: CodeChange
+}
+
+export type SectionContext = {
+  cards: CardContext[]
+  focused: { qualifiedName: string; path: string; code: string } | null
 }
 
 export type ChatMessage = { role: 'user' | 'assistant'; content: string }

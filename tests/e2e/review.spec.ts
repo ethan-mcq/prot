@@ -31,7 +31,7 @@ async function openSharePull() {
   await expect(h.page.getByRole('heading', { name: pull.title })).toBeVisible()
 }
 
-test('signs in, badges the dock, and walks the guide from overview through flow to chapters', async () => {
+test('signs in, badges the dock, and walks the guide from a risk-first overview through the story map into sections', async () => {
   const { page, app } = h
   await shot('01-sign-in')
   await signIn()
@@ -42,36 +42,59 @@ test('signs in, badges the dock, and walks the guide from overview through flow 
   await openSharePull()
   await expect(page.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByRole('tabpanel')).toContainText('packages/mobile/plugins')
+  const risk = page.getByRole('region', { name: 'Risk' })
+  await expect(risk).toContainText(/(Low|Medium|High) risk/)
+  await expect(risk).toContainText('estimated')
+  const description = page.getByText('This PR adds mobile sharing so external content can be staged')
+  await expect(description).toBeHidden()
+  await expect(page.getByRole('tabpanel')).toContainText('takeShare enters through MainActivity.onNewIntent')
   await shot('02-overview')
+  await page.getByText('Description', { exact: true }).click()
+  await expect(description).toBeVisible()
 
   await page.keyboard.press('ArrowRight')
-  await expect(page.getByRole('tab', { name: 'Flow' })).toHaveAttribute('aria-selected', 'true')
-  const takeShare = page.getByRole('tabpanel').getByRole('button', { name: 'takeShare()', exact: true })
+  await expect(page.getByRole('tab', { name: 'Story map' })).toHaveAttribute('aria-selected', 'true')
+  const takeShare = page.getByRole('tabpanel').getByRole('button', { name: 'CapyShareModule.takeShare', exact: true })
   await expect(takeShare).toBeVisible()
-  await shot('03-flow')
+  await shot('03-story-map')
 
   await takeShare.click()
-  await expect(page.getByRole('tab', { name: /Capy share module/ })).toHaveAttribute('aria-selected', 'true')
-  const moduleKt = page.getByRole('region', {
-    name: 'packages/mobile/modules/capy-share/android/src/main/java/ai/capy/share/CapyShareModule.kt'
-  })
-  await expect(moduleKt).toBeVisible()
-  const focused = moduleKt.locator('[aria-current="true"]')
+  await expect(page.getByRole('tab', { name: /takeShare enters through MainActivity\.onNewIntent/ })).toHaveAttribute('aria-selected', 'true')
+  const storyline = page.getByLabel('Storyline')
+  const entry = storyline.getByRole('region').first()
+  await expect(entry).toHaveAccessibleName('MainActivity.onNewIntent')
+  await expect(entry.locator('header')).toContainText('Entry')
+  const card = page.getByRole('region', { name: 'CapyShareModule.takeShare', exact: true })
+  await expect(card.locator('header')).toContainText('Added')
+  const focused = card.locator('[aria-current="true"]')
   await expect(focused).toContainText('fun takeShare(')
   await expect(focused).toBeInViewport()
-  await shot('04-chapter-focused-row')
+  await shot('04-section-focused-row')
+
+  const helper = page.getByRole('region', { name: 'CapyShareModule.stageItems', exact: true })
+  await expect(helper).toContainText('fun stageItems(')
+  await expect(storyline.getByRole('region', { name: 'ShareInbox', exact: true })).toHaveCount(0)
 
   await page.getByRole('button', { name: 'Next' }).click()
-  await expect(page.getByRole('tab', { name: /With share extension/ })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('tab', { name: /withShareExtension/ })).toHaveAttribute('aria-selected', 'true')
+  await shot('04c-second-section')
+
+  await page.getByRole('button', { name: 'Next' }).click()
+  await expect(page.getByRole('tab', { name: /New ShareInbox/ })).toHaveAttribute('aria-selected', 'true')
+  await expect(storyline.getByRole('region').first()).toHaveAccessibleName('ShareInbox')
+  await expect(storyline.getByRole('separator', { name: 'Tests' })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'uploads every shared item' })).toContainText('useShareSend')
+  await page.getByRole('region', { name: 'uploads every shared item' }).scrollIntoViewIfNeeded()
+  await shot('04b-section-tests')
 })
 
 test('expands into the IDE, browses the whole repo, and submits an approval with an inline comment', async () => {
   const { page, github } = h
   await signIn()
   await openSharePull()
-  await page.getByRole('tab', { name: /Share inbox UI/ }).click()
+  await page.getByRole('tab', { name: /New ShareInbox/ }).click()
 
-  const send = page.getByRole('region', { name: 'packages/mobile/src/share/send.ts' })
+  const send = page.getByRole('region', { name: 'useShareSend', exact: true })
   await expect(send).toContainText('Should uploads run in parallel?')
   await expect(send.getByRole('link', { name: 'Fix in Cursor' })).toHaveCount(2)
   await expect(send).toContainText('Finalize can bypass run failure hold')
@@ -139,6 +162,10 @@ test('chat widget takes an API key, swaps in the AI guide, and answers with the 
   const chats = () => anthropic.requests.filter((r) => !JSON.stringify(r.body).includes('json_schema'))
   const first = chats().at(-1)?.body as { model: string; output_config: { effort: string } }
   const sent = JSON.stringify(first)
+  const guideRequest = JSON.stringify(anthropic.requests.find((r) => JSON.stringify(r.body).includes('json_schema'))?.body)
+  expect(guideRequest).toContain('CapyShareModule.takeShare')
+  expect(guideRequest).not.toContain('share extension and Android share intent to a new or existing thread')
+  expect(guideRequest).not.toContain('staged, uploaded, and sent to Capy threads')
   expect(sent).toContain('Stage and upload shared files')
   expect(sent).toContain('Where does sharing start?')
   expect({ model: first.model, effort: first.output_config.effort }).toEqual({ model: 'claude-sonnet-5-5', effort: 'medium' })
@@ -178,8 +205,10 @@ test('a push while reading flags the stale AI guide in place, reaches the new fi
   await expect(banner).toContainText('2 files, +44 −0 since 9f3c2a1')
   await expect(banner).toContainText('New core file share-queue.ts is not in any chapter yet.')
   await expect(chapter).toHaveAttribute('aria-selected', 'true')
-  await page.getByRole('tabpanel').getByRole('button', { name: moduleKt, exact: true }).click()
-  await expect(page.getByRole('region', { name: moduleKt }).locator('header')).toContainText('changed since guide')
+  await page.getByRole('tabpanel').getByRole('button', { name: 'CapyShareModule.takeShare', exact: true }).click()
+  await expect(page.getByRole('region', { name: 'CapyShareModule.takeShare', exact: true }).locator('header')).toContainText(
+    'changed since guide'
+  )
   await shot('08-stale-guide-banner')
 
   await page.getByRole('button', { name: `Open ${moduleKt} in IDE` }).first().click()

@@ -28,6 +28,7 @@ const api: ProtApi = {
     comment: (ref, body) => ipcRenderer.invoke(IPC.pullComment, ref, body)
   },
   guide: {
+    story: (ref) => ipcRenderer.invoke(IPC.guideStory, ref),
     ai: (ref, refresh) => ipcRenderer.invoke(IPC.guideAi, ref, refresh)
   },
   ai: {

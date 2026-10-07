@@ -1,13 +1,13 @@
-import { useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
+import { Fragment, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { Check, Maximize2, Workflow } from 'lucide-react'
 import { locateFlowNode } from '@shared/guide'
-import type { FlowEdge, FlowNode } from '@shared/types'
+import type { CodeSymbol, FlowEdge, FlowNode } from '@shared/types'
 import { DiffStat } from '@/components/diff-stat'
 import { chapterFiles } from '@/components/chapter-step'
 import { DashedFrame, PaneHeader } from '@/components/pane'
 import { pad2, splitPath } from '@/lib/paths'
 import { useReview } from '@/lib/review-context'
-import { chapterReviewKeys, isReviewed } from '@/lib/review-session'
+import { chapterReviewKeys, isReviewed, symbolFor } from '@/lib/review-session'
 import { cn } from '@/lib/utils'
 
 const PILL_MIN = 176
@@ -17,28 +17,30 @@ export function FlowStep() {
   const { detail, session } = useReview()
   const { flow } = session.guide
   const { ref } = detail.summary
+  const story = session.guide.chapters.some((chapter) => chapter.cards.length > 0)
   return (
     <div className="pane flex h-full flex-col">
-      <PaneHeader icon={<Workflow />} title="Flow" detail={`${ref.repo}#${ref.number}`} />
+      <PaneHeader icon={<Workflow />} title="Story map" detail={`${ref.repo}#${ref.number}`} />
       <div className="scroll-quiet min-h-0 flex-1 overflow-y-auto px-5 pt-2 pb-6 font-mono text-[12.5px] leading-[1.7]">
         <div className="max-w-[1100px] space-y-6">
           <div className="space-y-2">
-            <h2 className="text-[16px] font-semibold text-foreground">Flow</h2>
+            <h2 className="text-[16px] font-semibold text-foreground">Story map</h2>
             {flow.caption && <p className="max-w-[720px] font-copy text-[13px] leading-[1.75] text-foreground/85">{flow.caption}</p>}
           </div>
-          {flow.nodes.length > 0 ? (
+          {story ? (
+            <>
+              <StoryMap />
+              <Legend />
+              <ChapterList fileLevel />
+            </>
+          ) : flow.nodes.length > 0 ? (
             <div className="space-y-3">
               <DashedFrame label={`F L O W   nodes: ${flow.nodes.length}`}>
                 <div className="px-7 py-9">
                   <Serpentine nodes={flow.nodes} />
                 </div>
               </DashedFrame>
-              <p className="text-[11.5px] whitespace-pre-wrap text-muted-foreground">
-                <span className="text-added">+ added</span>
-                {'  '}
-                <span className="text-modified">~ modified</span>
-                {'  · existing   → calls   hover a node to see its links   click to jump to its line'}
-              </p>
+              <Legend />
             </div>
           ) : (
             <p className="max-w-[720px] font-copy text-[13px] leading-[1.75] text-muted-foreground">
@@ -46,10 +48,109 @@ export function FlowStep() {
               independent edits. Read it chapter by chapter instead.
             </p>
           )}
-          <ChapterList />
+          {!story && <ChapterList />}
         </div>
       </div>
     </div>
+  )
+}
+
+function Legend() {
+  return (
+    <p className="text-[11.5px] whitespace-pre-wrap text-muted-foreground">
+      <span className="text-added">+ added</span>
+      {'  '}
+      <span className="text-modified">~ modified</span>
+      {'  · existing   → calls   hover a node to see its links   click to jump to its line'}
+    </p>
+  )
+}
+
+function storyNode(symbol: CodeSymbol, chapterId: string): FlowNode {
+  const change = symbol.change === 'deleted' ? 'modified' : symbol.change
+  return { id: symbol.id, label: symbol.qualifiedName, file: symbol.path, change, chapterId, symbolId: symbol.id }
+}
+
+function StoryMap() {
+  const { session, dispatch } = useReview()
+  const [hovered, setHovered] = useState<string | null>(null)
+  const sections = session.guide.chapters
+    .map((chapter, index) => ({ chapter, index }))
+    .filter(({ chapter }) => chapter.cards.length > 0)
+  const rows = sections.map(({ chapter, index }) => {
+    const nodes: { node: FlowNode; entry: boolean }[] = []
+    for (const card of chapter.cards) {
+      const symbol = symbolFor(session, card.symbolId)
+      if (symbol === undefined || card.seeChapterId !== null || symbol.kind === 'module') continue
+      nodes.push({ node: storyNode(symbol, chapter.id), entry: card.role === 'entry' })
+    }
+    return { chapter, index, nodes }
+  })
+  const edges: FlowEdge[] = []
+  const ids = new Set(rows.flatMap((row) => row.nodes.map(({ node }) => node.id)))
+  for (const id of ids) {
+    for (const callee of symbolFor(session, id)?.calls ?? []) {
+      if (callee !== id && ids.has(callee)) edges.push({ from: id, to: callee })
+    }
+  }
+  const links = linksOf(edges)
+  const name = (id: string) => symbolFor(session, id)?.name ?? id
+
+  return (
+    <ol aria-label="Story map" className="space-y-4">
+      {rows.map(({ chapter, index, nodes }) => {
+        const done = isReviewed(session, chapterReviewKeys(chapter))
+        return (
+          <li key={chapter.id} className="space-y-2">
+            <button
+              type="button"
+              onClick={() => dispatch({ type: 'step/go', index: index + 2 })}
+              className="flex w-full min-w-0 items-center gap-2.5 rounded-[6px] px-1 text-left transition-colors hover:bg-accent"
+            >
+              <span className="text-muted-foreground tabular-nums">{pad2(index + 1)}</span>
+              <span className="min-w-0 truncate font-medium">{chapter.title}</span>
+              {done && <Check aria-label="Reviewed" className="size-3.5 shrink-0 text-added" strokeWidth={3} />}
+            </button>
+            <div role="list" aria-label={chapter.title} className="flex flex-wrap items-center gap-x-1.5 gap-y-3 pl-7">
+              {nodes.map(({ node, entry }, i) => {
+                const prev = nodes[i - 1]?.node
+                const linked = prev !== undefined && (links.calls.get(prev.id)?.includes(node.id) ?? false)
+                return (
+                  <Fragment key={node.id}>
+                    {i > 0 && (
+                      <span aria-hidden className={cn('px-0.5 text-[11px]', linked ? 'text-frame' : 'text-transparent')}>
+                        →
+                      </span>
+                    )}
+                    <div
+                      role="listitem"
+                      className="relative w-fit min-w-[150px] max-w-[320px]"
+                      onMouseEnter={() => setHovered(node.id)}
+                      onMouseLeave={() => setHovered(null)}
+                      onFocus={() => setHovered(node.id)}
+                      onBlur={() => setHovered(null)}
+                    >
+                      {entry && (
+                        <span className="absolute -top-2 right-2 z-10 rounded-[4px] bg-card px-1 font-mono text-[9.5px] leading-[14px] text-command">
+                          entry
+                        </span>
+                      )}
+                      <FlowPill
+                        node={node}
+                        relation={relationTo(hovered, node, links)}
+                        calls={(links.calls.get(node.id) ?? []).map(name)}
+                        calledBy={(links.calledBy.get(node.id) ?? []).map(name)}
+                        showChapter={false}
+                      />
+                    </div>
+                  </Fragment>
+                )
+              })}
+            </div>
+          </li>
+        )
+      })}
+    </ol>
   )
 }
 
@@ -196,17 +297,20 @@ function FlowPill({
   node,
   relation,
   calls,
-  calledBy
+  calledBy,
+  showChapter = true
 }: {
   node: FlowNode
   relation: Relation
   calls: string[]
   calledBy: string[]
+  showChapter?: boolean
 }) {
   const { detail, session, dispatch } = useReview()
   const tone = TONE[node.change]
   const linked = relation === 'callee' || relation === 'caller'
-  const at = useMemo(() => locateFlowNode(node, detail.files), [node, detail.files])
+  const symbols = useMemo(() => ({ ...session.guide.symbols, ...session.symbols }), [session.guide.symbols, session.symbols])
+  const at = useMemo(() => locateFlowNode(node, detail.files, symbols), [node, detail.files, symbols])
   const path = at?.path ?? node.file
   const chapterIndex = session.guide.chapters.findIndex((chapter) => chapter.id === node.chapterId)
   const hasChapter = chapterIndex !== -1
@@ -253,7 +357,7 @@ function FlowPill({
           {relation}
         </span>
       )}
-      {hasChapter && (
+      {hasChapter && showChapter && (
         <button
           type="button"
           aria-label={`Go to chapter ${chapterIndex + 1}`}
@@ -278,15 +382,19 @@ function FlowPill({
   )
 }
 
-export function ChapterList() {
+export function ChapterList({ fileLevel = false }: { fileLevel?: boolean }) {
   const { detail, session, dispatch } = useReview()
+  const listed = session.guide.chapters
+    .map((chapter, index) => ({ chapter, index }))
+    .filter(({ chapter }) => !fileLevel || chapter.cards.length === 0)
+  if (listed.length === 0) return null
   return (
     <section className="space-y-2">
       <h3 className="font-semibold">
-        Chapters <span className="font-normal text-muted-foreground">{session.guide.chapters.length}</span>
+        {fileLevel ? 'Other chapters' : 'Chapters'} <span className="font-normal text-muted-foreground">{listed.length}</span>
       </h3>
       <ol>
-        {session.guide.chapters.map((chapter, index) => {
+        {listed.map(({ chapter, index }) => {
           const files = chapterFiles(chapter, detail.files)
           const additions = files.reduce((sum, file) => sum + file.additions, 0)
           const deletions = files.reduce((sum, file) => sum + file.deletions, 0)

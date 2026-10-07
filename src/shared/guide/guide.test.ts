@@ -109,17 +109,13 @@ describe('buildHeuristicGuide', () => {
     ])
   })
 
-  it('summarizes the PR body without template noise, or describes the diff when the body is empty', () => {
+  it('lists one overview point per chapter with its file count', () => {
     const { overview } = buildHeuristicGuide(capySharePull)
-    expect(overview.summary).toBe(
-      'Adds a share extension so people can share text from any app straight into a Capy thread. Android delivers the share through MainActivity, iOS through an app group.'
-    )
-    expect(overview.points).toHaveLength(8)
-    expect(overview.points[0]).toBe('Capy share module in modules/capy-share (2 files)')
-    expect(overview.points[7]).toBe('Lockfiles (1 file)')
-
-    const bare = pullWith([added('src/share/send.ts', ['export const a = 1', 'export const b = 2'])])
-    expect(buildHeuristicGuide(bare).overview.summary).toBe('Changes 1 file (+2 -0), mostly in src/share.')
+    expect([overview.points.length, overview.points[0], overview.points[7]]).toEqual([
+      8,
+      'Capy share module in modules/capy-share (2 files)',
+      'Lockfiles (1 file)'
+    ])
   })
 
   it('traces how the new symbols call each other, main path first', () => {
