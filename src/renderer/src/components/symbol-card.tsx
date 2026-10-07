@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { ChevronDown, ChevronUp, CornerDownRight, Loader2, Maximize2 } from 'lucide-react'
 import { parsePatch } from '@shared/diff'
 import { locateSymbol } from '@shared/guide/locate'
-import { excerptRows, symbolRows, type SymbolRow } from '@shared/symbol-rows'
+import { excerptRows, focusRows, symbolRows, type SymbolRow } from '@shared/symbol-rows'
 import type { Chapter, CodeChange, CodeSymbol, StoryCard, SymbolKind } from '@shared/types'
 import { Checkbox } from '@/components/ui/checkbox'
 import { CommentableLine, useFocusScroll, useLineComments } from '@/components/diff-view'
@@ -233,7 +233,8 @@ export function useSymbolRows(symbol: CodeSymbol, card: StoryCard, chapter: Chap
   }, [needsHead, loadFile, symbol.path])
   const rows = useMemo(() => {
     const all = symbolRows(symbol, children, hunks, head, storyMarks(symbol, chapter))
-    return card.excerpt === null ? all : excerptRows(all, card.excerpt)
+    if (card.excerpt !== null) return excerptRows(all, card.excerpt)
+    return symbol.change === 'added' || symbol.change === 'deleted' ? all : focusRows(all)
   }, [symbol, children, hunks, head, chapter, card.excerpt])
   return { rows, head, loading: needsHead && head === null && !failed }
 }
@@ -242,8 +243,13 @@ function SymbolBody({ symbol, card, chapter }: { symbol: CodeSymbol; card: Story
   const { session } = useReview()
   const { rows, head, loading } = useSymbolRows(symbol, card, chapter)
   const [expanded, setExpanded] = useState(false)
+  const [openGaps, setOpenGaps] = useState<Set<SymbolRow>>(() => new Set())
   const lang = languageFor(symbol.path)
-  const lineRows = rows.filter((row): row is Extract<SymbolRow, { kind: 'line' }> => row.kind === 'line')
+  const lineRows: Extract<SymbolRow, { kind: 'line' }>[] = []
+  for (const row of rows) {
+    const inner = row.kind === 'gap' ? row.rows : [row]
+    for (const item of inner) if (item.kind === 'line') lineRows.push(item)
+  }
   const tokens = useHighlighted(
     lineRows.map((row) => row.line.text),
     lang
@@ -260,8 +266,13 @@ function SymbolBody({ symbol, card, chapter }: { symbol: CodeSymbol; card: Story
       </p>
     )
   }
-  const long = rows.length > LONG_BODY && !expanded
-  const shown = long ? rows.slice(0, SHOWN_WHEN_LONG) : rows
+  const visible: SymbolRow[] = []
+  for (const row of rows) {
+    if (row.kind === 'gap' && openGaps.has(row)) visible.push(...row.rows)
+    else visible.push(row)
+  }
+  const long = visible.length > LONG_BODY && !expanded
+  const shown = long ? visible.slice(0, SHOWN_WHEN_LONG) : visible
   return (
     <div className="py-1 font-mono text-[12px] leading-5">
       {shown.map((row, index) => {
@@ -280,9 +291,14 @@ function SymbolBody({ symbol, card, chapter }: { symbol: CodeSymbol; card: Story
         }
         if (row.kind === 'gap') {
           return (
-            <div key={rowKey(row, index)} className="py-0.5 pr-4 pl-[86px] text-muted-foreground select-none">
-              ⋯ {row.lines} {row.lines === 1 ? 'line' : 'lines'}
-            </div>
+            <button
+              key={rowKey(row, index)}
+              type="button"
+              onClick={() => setOpenGaps((open) => new Set(open).add(row))}
+              className="flex w-full py-0.5 pr-4 pl-[86px] text-left text-muted-foreground transition-colors select-none hover:bg-accent hover:text-foreground"
+            >
+              ⋯ {row.lines} unmodified {row.lines === 1 ? 'line' : 'lines'}
+            </button>
           )
         }
         const member = symbolFor(session, row.symbolId)
@@ -308,7 +324,7 @@ function SymbolBody({ symbol, card, chapter }: { symbol: CodeSymbol; card: Story
           onClick={() => setExpanded(true)}
           className="flex w-full items-center gap-2 py-1 pr-4 pl-[86px] text-left text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         >
-          <CornerDownRight className="size-3" /> Show {rows.length - SHOWN_WHEN_LONG} more lines
+          <CornerDownRight className="size-3" /> Show {visible.length - SHOWN_WHEN_LONG} more lines
         </button>
       )}
       {rows.length === 0 && <p className="px-4 py-3 text-muted-foreground">No lines to show for this symbol.</p>}

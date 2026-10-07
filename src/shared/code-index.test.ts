@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { assembleIndex, type ParsedSymbol, type ParsedVersion, type Ref } from './code-index'
 import { parsePatch } from './diff'
-import { symbolRows } from './symbol-rows'
+import { focusRows, symbolRows, type SymbolRow } from './symbol-rows'
 import type { ChangedFile, CodeSymbol } from './types'
 
 function sym(qualifiedName: string, start: number, end: number, extra: Partial<ParsedSymbol> = {}): ParsedSymbol {
@@ -251,5 +251,40 @@ describe('symbolRows', () => {
     const member = byId.get('src/send.ts#keep') as CodeSymbol
     const result = symbolRows(cls, [member], hunks, head).map((row) => (row.kind === 'fold' ? `fold ${row.line}` : row.kind === 'line' ? row.line.newLine : row.kind))
     expect(result).toEqual([1, 2, 3, 4, 5, 6, 7, 'fold 8'])
+  })
+})
+
+describe('focusRows', () => {
+  const contextRow = (n: number, mark = false): SymbolRow => ({ kind: 'line', line: { kind: 'context', oldLine: n, newLine: n, text: `l${n}` }, mark })
+  const addRow = (n: number): SymbolRow => ({ kind: 'line', line: { kind: 'add', oldLine: null, newLine: n, text: `l${n}` }, mark: false })
+  const body = (count: number, special: Record<number, SymbolRow>) =>
+    Array.from({ length: count }, (_, i) => special[i + 1] ?? contextRow(i + 1))
+  const shape = (rows: SymbolRow[]) =>
+    rows.map((row) => (row.kind === 'gap' ? `gap ${row.lines}` : row.kind === 'line' ? `${row.line.kind[0]}${row.line.newLine}` : 'fold'))
+
+  it.each([
+    {
+      name: 'a short symbol stays whole',
+      rows: body(6, { 4: addRow(4) }),
+      expected: ['c1', 'c2', 'c3', 'a4', 'c5', 'c6']
+    },
+    {
+      name: 'a long symbol keeps its signature and three lines around a late change',
+      rows: body(40, { 35: addRow(35) }),
+      expected: ['c1', 'c2', 'gap 29', 'c32', 'c33', 'c34', 'a35', 'c36', 'c37', 'c38', 'gap 2']
+    },
+    {
+      name: 'a marked call site anchors like a change',
+      rows: body(40, { 20: contextRow(20, true) }),
+      expected: ['c1', 'c2', 'gap 14', 'c17', 'c18', 'c19', 'c20', 'c21', 'c22', 'c23', 'gap 17']
+    }
+  ])('$name', ({ rows, expected }) => {
+    expect(shape(focusRows(rows))).toEqual(expected)
+  })
+
+  it('keeps the folded rows inside the gap so the card can expand them', () => {
+    const rows = body(40, { 35: addRow(35) })
+    const gap = focusRows(rows)[2]
+    expect(gap?.kind === 'gap' ? shape(gap.rows) : null).toEqual(shape(rows.slice(2, 31)))
   })
 })

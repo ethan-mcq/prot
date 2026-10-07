@@ -3,7 +3,7 @@ import type { CodeSymbol, DiffHunk, DiffLine, LineRange } from './types'
 export type SymbolRow =
   | { kind: 'line'; line: DiffLine; mark: boolean }
   | { kind: 'fold'; symbolId: string; line: number }
-  | { kind: 'gap'; lines: number }
+  | { kind: 'gap'; lines: number; rows: SymbolRow[] }
 
 function within(range: LineRange | null, line: number | null): boolean {
   return range !== null && line !== null && line >= range.start && line <= range.end
@@ -79,17 +79,53 @@ export function symbolRows(
 
 export function excerptRows(rows: SymbolRow[], ranges: LineRange[]): SymbolRow[] {
   const result: SymbolRow[] = []
-  let skipped = 0
+  let skipped: SymbolRow[] = []
   for (const row of rows) {
     const line = row.kind === 'line' ? (row.line.newLine ?? row.line.oldLine) : row.kind === 'fold' ? row.line : null
     const keep = line !== null && ranges.some((range) => within(range, line))
     if (!keep) {
-      skipped += 1
+      skipped.push(row)
       continue
     }
-    if (skipped > 0 && result.length > 0) result.push({ kind: 'gap', lines: skipped })
-    skipped = 0
+    if (skipped.length > 0 && result.length > 0) result.push({ kind: 'gap', lines: skipped.length, rows: skipped })
+    skipped = []
     result.push(row)
   }
+  return result
+}
+
+const FOCUS = { threshold: 30, lead: 2, context: 3 }
+
+function isAnchor(row: SymbolRow): boolean {
+  if (row.kind === 'fold') return true
+  if (row.kind !== 'line') return false
+  return row.line.kind !== 'context' || row.mark
+}
+
+// Large changed symbols show their signature and each change with a little context; unchanged runs fold into gaps.
+export function focusRows(rows: SymbolRow[]): SymbolRow[] {
+  if (rows.length <= FOCUS.threshold) return rows
+  const keep: boolean[] = rows.map((_, index) => index < FOCUS.lead)
+  for (let index = 0; index < rows.length; index++) {
+    const row = rows[index]
+    if (row === undefined || !isAnchor(row)) continue
+    const from = Math.max(0, index - FOCUS.context)
+    const to = Math.min(rows.length - 1, index + FOCUS.context)
+    for (let near = from; near <= to; near++) keep[near] = true
+  }
+  const result: SymbolRow[] = []
+  let hidden: SymbolRow[] = []
+  for (let index = 0; index < rows.length; index++) {
+    const row = rows[index]
+    if (row === undefined) continue
+    if (keep[index]) {
+      if (hidden.length > 0) result.push({ kind: 'gap', lines: hidden.length, rows: hidden })
+      hidden = []
+      result.push(row)
+    } else {
+      hidden.push(row)
+    }
+  }
+  if (hidden.length > 0) result.push({ kind: 'gap', lines: hidden.length, rows: hidden })
   return result
 }
