@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Logo } from '@/components/logo'
+import { PaneHeader } from '@/components/pane'
+import { TitleBar } from '@/components/title-bar'
 import { errorMessage } from '@/lib/utils'
 
 type Pending = 'gh' | 'token' | null
@@ -34,50 +36,54 @@ export function AuthGate({ error, onAuth }: { error: string | null; onAuth: (sta
   const shown = localError ?? error
 
   return (
-    <div className="flex h-full flex-col bg-sidebar">
-      <div className="drag-region h-12 shrink-0" />
-      <div className="dot-grid flex flex-1 items-center justify-center px-6 pb-12">
-        <div className="w-full max-w-[380px] rounded-2xl border bg-card p-8 shadow-soft">
-          <Logo className="mx-auto size-16" />
-          <h1 className="mt-5 text-center text-3xl font-semibold tracking-tight">prot</h1>
-          <p className="mt-1.5 text-center text-sm text-muted-foreground">Guided reviews for your GitHub pull requests</p>
-          <Button
-            className="mt-7 w-full"
-            disabled={pending !== null}
-            onClick={() => void run('gh', () => window.prot.auth.signInWithGh())}
-          >
-            {pending === 'gh' ? <Loader2 className="animate-spin" /> : <Terminal />}
-            Continue with GitHub CLI
-          </Button>
-          <div className="my-6 flex items-center gap-3">
-            <span className="h-px flex-1 bg-border" />
-            <span className="micro-label">or</span>
-            <span className="h-px flex-1 bg-border" />
-          </div>
-          <form onSubmit={submitToken} className="space-y-2.5">
-            <Label htmlFor="token" className="text-xs text-muted-foreground">
-              Personal access token
-            </Label>
-            <Input
-              id="token"
-              type="password"
-              autoComplete="off"
-              spellCheck={false}
-              placeholder="ghp_…"
-              value={token}
-              onChange={(event) => setToken(event.target.value)}
-              className="font-mono"
-            />
-            <Button type="submit" variant="outline" className="w-full" disabled={pending !== null || !token.trim()}>
-              {pending === 'token' && <Loader2 className="animate-spin" />}
-              Sign in
-            </Button>
-          </form>
-          {shown && (
-            <p role="alert" className="mt-4 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-              {shown}
+    <div className="flex h-full flex-col">
+      <TitleBar login={null} />
+      <div className="surface mx-2 mb-2 flex flex-1 items-center justify-center px-6 pb-12">
+        <div className="pane w-full max-w-[400px] overflow-hidden">
+          <PaneHeader icon={<Logo className="size-4" />} title="prot" detail="sign in" />
+          <div className="px-7 pt-5 pb-7">
+            <h1 className="font-display text-[52px]">Guided reviews</h1>
+            <p className="mt-2 font-copy text-[12.5px] leading-[1.7] text-muted-foreground">
+              Walk your GitHub pull requests as an overview, a flow and chapters.
             </p>
-          )}
+            <Button
+              className="mt-6 w-full"
+              disabled={pending !== null}
+              onClick={() => void run('gh', () => window.prot.auth.signInWithGh())}
+            >
+              {pending === 'gh' ? <Loader2 className="animate-spin" /> : <Terminal />}
+              Continue with GitHub CLI
+            </Button>
+            <div className="my-6 flex items-center gap-3">
+              <span className="h-px flex-1 bg-border" />
+              <span className="font-mono text-[11px] text-muted-foreground">or</span>
+              <span className="h-px flex-1 bg-border" />
+            </div>
+            <form onSubmit={submitToken} className="space-y-2.5">
+              <Label htmlFor="token" className="font-mono text-[11.5px] font-normal text-muted-foreground">
+                Personal access token
+              </Label>
+              <Input
+                id="token"
+                type="password"
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="ghp_…"
+                value={token}
+                onChange={(event) => setToken(event.target.value)}
+                className="font-mono"
+              />
+              <Button type="submit" variant="outline" className="w-full" disabled={pending !== null || !token.trim()}>
+                {pending === 'token' && <Loader2 className="animate-spin" />}
+                Sign in
+              </Button>
+            </form>
+            {shown && (
+              <p role="alert" className="mt-4 font-mono text-[11.5px] text-destructive">
+                ! {shown}
+              </p>
+            )}
+          </div>
         </div>
       </div>
     </div>

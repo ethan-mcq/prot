@@ -2,6 +2,7 @@ import { LogOut, Settings as SettingsIcon } from 'lucide-react'
 import type { Theme } from '@shared/types'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
+import { PaneButton } from '@/components/pane'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
@@ -28,14 +29,14 @@ export function SettingsMenu({ onSignOut }: { onSignOut: () => void }) {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon-sm" aria-label="Settings" className="text-muted-foreground">
-          <SettingsIcon className="size-4" />
-        </Button>
+        <PaneButton aria-label="Settings">
+          <SettingsIcon />
+        </PaneButton>
       </PopoverTrigger>
-      <PopoverContent side="top" align="end" className="w-80 space-y-4 p-4">
+      <PopoverContent side="top" align="end" collisionPadding={10} className="w-80 space-y-4 p-4">
         <div className="space-y-2">
-          <p className="micro-label">Theme</p>
-          <div role="radiogroup" aria-label="Theme" className="grid grid-cols-3 rounded-lg border bg-muted p-0.5">
+          <p className="font-mono text-[11.5px] text-muted-foreground">theme</p>
+          <div role="radiogroup" aria-label="Theme" className="grid grid-cols-3 rounded-[8px] bg-muted p-0.5">
             {THEMES.map((theme) => (
               <button
                 key={theme.value}
@@ -44,9 +45,9 @@ export function SettingsMenu({ onSignOut }: { onSignOut: () => void }) {
                 aria-checked={settings.theme === theme.value}
                 onClick={() => void updateSettings({ theme: theme.value })}
                 className={cn(
-                  'rounded-md py-1 text-xs transition-colors',
+                  'rounded-[6px] py-1 text-xs transition-colors',
                   settings.theme === theme.value
-                    ? 'bg-background font-medium shadow-xs'
+                    ? 'bg-card font-medium shadow-raised'
                     : 'text-muted-foreground hover:text-foreground'
                 )}
               >
@@ -56,7 +57,7 @@ export function SettingsMenu({ onSignOut }: { onSignOut: () => void }) {
           </div>
         </div>
         <div className="space-y-2">
-          <p className="micro-label">Check for pull requests</p>
+          <p className="font-mono text-[11.5px] text-muted-foreground">check for pull requests</p>
           <Select
             value={String(settings.pollSeconds)}
             onValueChange={(value) => void updateSettings({ pollSeconds: Number(value) })}

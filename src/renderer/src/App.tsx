@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Inbox } from 'lucide-react'
 import { toast } from 'sonner'
 import type { AuthState, GitHubUser, InboxState, PullRef } from '@shared/types'
 import { pullKey } from '@shared/types'
@@ -6,8 +7,10 @@ import { Toaster } from '@/components/ui/sonner'
 import { AuthGate } from '@/components/auth-gate'
 import { ChatWidget } from '@/components/chat-widget'
 import { Logo } from '@/components/logo'
+import { DashedFrame, PaneHeader } from '@/components/pane'
 import { PullView } from '@/components/pull-view'
 import { Sidebar } from '@/components/sidebar'
+import { TitleBar, TitleBarSlotProvider } from '@/components/title-bar'
 import { useHotkeys } from '@/lib/hooks'
 import { PrefsProvider, usePrefs } from '@/lib/prefs'
 import { errorMessage } from '@/lib/utils'
@@ -71,47 +74,57 @@ function useInbox() {
 function Shell({ user, onSignOut }: { user: GitHubUser; onSignOut: () => void }) {
   const { inbox, refreshing, refresh } = useInbox()
   const [selected, setSelected] = useState<PullRef | null>(null)
+  const [titleSlot, setTitleSlot] = useState<HTMLElement | null>(null)
   const reviewCount = inbox?.pulls.filter((pull) => pull.bucket === 'review').length ?? 0
 
   useHotkeys({ r: () => void refresh() })
 
   return (
     <ViewProvider>
-      <div className="flex h-full">
-        <Sidebar
-          inbox={inbox}
-          refreshing={refreshing}
-          onRefresh={() => void refresh()}
-          selected={selected ? pullKey(selected) : null}
-          onSelect={(pull) => setSelected(pull.ref)}
-          user={user}
-          onSignOut={onSignOut}
-        />
-        <main id="main-pane" className="relative min-w-0 flex-1 bg-background">
-          {selected ? (
-            <PullView key={pullKey(selected)} pullRef={selected} viewer={user.login} />
-          ) : (
-            <EmptyState reviewCount={reviewCount} />
-          )}
-        </main>
-      </div>
-      <ChatWidget />
+      <TitleBarSlotProvider value={titleSlot}>
+        <div className="flex h-full flex-col">
+          <TitleBar login={user.login} slotRef={setTitleSlot} />
+          <div className="surface mx-2 mb-2 flex min-h-0 flex-1 gap-2 p-2">
+            <Sidebar
+              inbox={inbox}
+              refreshing={refreshing}
+              onRefresh={() => void refresh()}
+              selected={selected ? pullKey(selected) : null}
+              onSelect={(pull) => setSelected(pull.ref)}
+              user={user}
+              onSignOut={onSignOut}
+            />
+            <main id="main-pane" className="relative min-w-0 flex-1">
+              {selected ? (
+                <PullView key={pullKey(selected)} pullRef={selected} viewer={user.login} />
+              ) : (
+                <EmptyState reviewCount={reviewCount} />
+              )}
+            </main>
+          </div>
+        </div>
+        <ChatWidget />
+      </TitleBarSlotProvider>
     </ViewProvider>
   )
 }
 
 function EmptyState({ reviewCount }: { reviewCount: number }) {
   return (
-    <div className="flex h-full flex-col">
-      <div className="drag-region h-12 shrink-0" />
-      <div className="dot-grid flex flex-1 flex-col items-center justify-center gap-3 pb-12 text-center">
-        <Logo className="size-14" />
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight">Pick a pull request</h1>
-        <p className="text-sm text-muted-foreground">
-          {reviewCount === 0
-            ? 'Nothing is waiting for your review.'
-            : `${reviewCount} ${reviewCount === 1 ? 'pull request is' : 'pull requests are'} waiting for your review.`}
-        </p>
+    <div className="pane flex h-full flex-col">
+      <PaneHeader icon={<Inbox />} title="Pick a pull request" />
+      <div className="flex flex-1 items-center justify-center px-8 pb-10">
+        <DashedFrame label={`P R O T   waiting: ${reviewCount}`} className="w-full max-w-[520px]">
+          <div className="flex flex-col items-center gap-3 px-6 py-14 text-center font-mono text-[12.5px]">
+            <Logo className="size-11" />
+            <p className="mt-2 text-foreground">Pick a pull request from the left.</p>
+            <p className="text-muted-foreground">
+              {reviewCount === 0
+                ? 'Nothing is waiting for your review.'
+                : `${reviewCount} ${reviewCount === 1 ? 'pull request is' : 'pull requests are'} waiting for your review.`}
+            </p>
+          </div>
+        </DashedFrame>
       </div>
     </div>
   )

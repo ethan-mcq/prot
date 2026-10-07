@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowUp, Eye, Loader2, Settings as SettingsIcon, Square, TextSelect, X } from 'lucide-react'
+import { ArrowUp, Loader2, Settings as SettingsIcon, Square, TextSelect, X } from 'lucide-react'
 import { AI_MODELS, pullKey, type AiModel, type ChatEvent, type ChatMessage, type ViewContext } from '@shared/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Logo } from '@/components/logo'
+import { PaneButton, PaneHeader } from '@/components/pane'
 import { Markdown } from '@/components/markdown'
 import { pad2, splitPath } from '@/lib/paths'
 import { usePrefs } from '@/lib/prefs'
@@ -48,9 +49,9 @@ function applyEvent(threads: Threads, event: ChatEvent): Threads {
 function seeing(view: ViewContext): string | null {
   if (!view.pull) return null
   const parts: string[] = []
-  if (view.step?.kind === 'overview') parts.push('Overview')
-  if (view.step?.kind === 'flow') parts.push('Flow')
-  if (view.step?.kind === 'chapter') parts.push(`Chapter ${pad2(view.step.index + 1)}`)
+  if (view.step?.kind === 'overview') parts.push('overview')
+  if (view.step?.kind === 'flow') parts.push('flow')
+  if (view.step?.kind === 'chapter') parts.push(`chapter ${pad2(view.step.index + 1)}`)
   if (view.file) {
     const lines = view.file.visibleLines ? ` L${view.file.visibleLines[0]}-${view.file.visibleLines[1]}` : ''
     parts.push(`${splitPath(view.file.path).name}${lines}`)
@@ -130,38 +131,31 @@ export function ChatWidget() {
       onKeyDown={(event) => {
         if (event.key === 'Escape') setChatOpen(false)
       }}
-      className="fixed right-6 bottom-6 z-40 flex h-[560px] max-h-[calc(100vh-48px)] w-[400px] flex-col overflow-hidden rounded-2xl border bg-popover shadow-[0_12px_40px_rgb(0_0_0/0.16)] animate-in fade-in-0 slide-in-from-bottom-2 duration-150"
+      className="pane fixed right-6 bottom-6 z-40 flex h-[580px] max-h-[calc(100vh-48px)] w-[420px] flex-col overflow-hidden border-frame bg-popover shadow-[0_28px_70px_-14px_rgb(40_20_10/0.45),0_4px_14px_-4px_rgb(40_20_10/0.18)] dark:shadow-[0_28px_70px_-14px_rgb(0_0_0/0.8)] animate-in fade-in-0 slide-in-from-bottom-2 duration-150"
     >
-      <header className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
-        <Logo className="size-6" />
-        <span className="text-sm font-semibold">Ask prot</span>
-        <ModelName />
-        <span className="flex-1" />
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Chat settings"
-          aria-pressed={showSetup}
-          onClick={() => setSetup(!setup)}
-          disabled={!keys.anthropic}
-          className="text-muted-foreground"
-        >
-          <SettingsIcon className="size-4" />
-        </Button>
-        <Button variant="ghost" size="icon-sm" aria-label="Close chat" onClick={() => setChatOpen(false)} className="text-muted-foreground">
-          <X className="size-4" />
-        </Button>
-      </header>
+      <PaneHeader
+        icon={<Logo className="size-4" />}
+        title="Ask prot"
+        detail={view.pull ? `${view.pull.ref.repo}#${view.pull.ref.number}` : undefined}
+        actions={
+          <>
+            <ModelName />
+            <PaneButton aria-label="Chat settings" aria-pressed={showSetup} onClick={() => setSetup(!setup)} disabled={!keys.anthropic}>
+              <SettingsIcon />
+            </PaneButton>
+            <PaneButton aria-label="Close chat" onClick={() => setChatOpen(false)}>
+              <X />
+            </PaneButton>
+          </>
+        }
+      />
       {showSetup ? (
         <KeySetup onDone={() => setSetup(false)} />
       ) : (
         <>
-          <div className="flex shrink-0 items-center gap-1.5 border-b bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground">
-            <Eye className="size-3 shrink-0" />
-            <span className="truncate" title={context ?? undefined}>
-              {context ? `Seeing: ${context}` : 'Open a pull request so prot can see it'}
-            </span>
-          </div>
+          <p className="shrink-0 truncate px-4 pb-1.5 font-mono text-[11px] text-muted-foreground" title={context ?? undefined}>
+            {context ? `seeing: ${context}` : 'open a pull request so prot can see it'}
+          </p>
           <Messages turns={turns} onStarter={send} canStart={view.pull !== null} />
           <Composer
             busy={streaming !== undefined}
@@ -180,7 +174,7 @@ export function ChatWidget() {
 
 function ModelName() {
   const { settings } = usePrefs()
-  return <span className="font-mono text-[10.5px] text-muted-foreground">{MODEL_NAMES[settings.model]}</span>
+  return <span className="mr-1 font-mono text-[10.5px] text-muted-foreground">{settings.model}</span>
 }
 
 function Messages({ turns, onStarter, canStart }: { turns: Turn[]; onStarter: (text: string) => void; canStart: boolean }) {
@@ -197,42 +191,50 @@ function Messages({ turns, onStarter, canStart }: { turns: Turn[]; onStarter: (t
 
   if (turns.length === 0) {
     return (
-      <div className="flex min-h-0 flex-1 flex-col justify-end gap-2 p-4">
-        <p className="mb-2 text-lg font-semibold">What would you like to know?</p>
-        {STARTERS.map((starter) => (
-          <button
-            key={starter}
-            type="button"
-            disabled={!canStart}
-            onClick={() => onStarter(starter)}
-            className="rounded-lg border bg-card px-3 py-2 text-left text-[13px] transition-colors hover:bg-accent disabled:opacity-50"
-          >
-            {starter}
-          </button>
-        ))}
+      <div className="flex min-h-0 flex-1 flex-col justify-end px-4 pb-4 font-mono text-[13px] tracking-[0.03em]">
+        <p className="mb-2 text-muted-foreground/45">? What do you want to know about this PR</p>
+        <ol>
+          {STARTERS.map((starter, i) => (
+            <li key={starter}>
+              <button
+                type="button"
+                disabled={!canStart}
+                onClick={() => onStarter(starter)}
+                className="flex w-full gap-3 rounded-[6px] px-4 py-1.5 text-left text-foreground/85 transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+              >
+                <span className="text-muted-foreground">{i + 1}.</span>
+                {starter}
+              </button>
+            </li>
+          ))}
+        </ol>
       </div>
     )
   }
 
   return (
-    <div ref={ref} role="log" aria-label="Conversation" className="scroll-quiet min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+    <div
+      ref={ref}
+      role="log"
+      aria-label="Conversation"
+      className="scroll-quiet min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pt-2 pb-4 font-mono text-[12.5px] leading-[1.7]"
+    >
       {turns.map((turn, i) =>
         turn.role === 'user' ? (
-          <div key={i} className="flex justify-end">
-            <p className="max-w-[85%] rounded-2xl rounded-br-md bg-muted px-3 py-2 text-[13px] leading-5 whitespace-pre-wrap">
-              {turn.content}
-            </p>
-          </div>
+          <p key={i} className="flex gap-2 font-medium whitespace-pre-wrap">
+            <span aria-hidden className="text-muted-foreground">›</span>
+            <span className="min-w-0">{turn.content}</span>
+          </p>
         ) : (
-          <div key={turn.id} className="space-y-1.5">
+          <div key={turn.id} className="space-y-1.5 pl-4">
             {turn.content ? (
-              <Markdown className="text-[13.5px] leading-6">{turn.content}</Markdown>
+              <Markdown className="text-[12.5px] leading-[1.7] text-foreground/90">{turn.content}</Markdown>
             ) : turn.status === 'streaming' ? (
-              <Loader2 aria-label="Thinking" className="size-4 animate-spin text-muted-foreground" />
+              <Loader2 aria-label="Thinking" className="size-3.5 animate-spin text-muted-foreground" />
             ) : null}
             {turn.status === 'failed' && (
-              <p role="alert" className="text-xs text-destructive">
-                {turn.error}
+              <p role="alert" className="text-destructive">
+                ! {turn.error}
               </p>
             )}
           </div>
@@ -265,9 +267,9 @@ function Composer({
   }
 
   return (
-    <div className="shrink-0 border-t p-3">
+    <div className="shrink-0 border-t border-pane-border p-2.5">
       {selection && (
-        <div className="mb-2 flex items-center gap-1.5 rounded-md border bg-muted/50 px-2 py-1 text-[11px] text-muted-foreground">
+        <div className="mb-2 flex items-center gap-1.5 rounded-[6px] bg-muted px-2 py-1 font-mono text-[11px] text-muted-foreground">
           <TextSelect className="size-3 shrink-0" />
           <span className="min-w-0 flex-1 truncate font-mono" title={selection}>
             {selection}
@@ -277,7 +279,8 @@ function Composer({
           </button>
         </div>
       )}
-      <div className="flex items-end gap-2 rounded-xl border bg-background p-1.5 pl-3 focus-within:ring-[3px] focus-within:ring-ring/30">
+      <div className="flex items-end gap-2 rounded-[9px] border border-pane-border bg-muted/40 p-1 pl-2.5 font-mono focus-within:border-frame">
+        <span aria-hidden className="py-1.5 text-[12.5px] leading-5 text-muted-foreground">›</span>
         <Textarea
           autoFocus
           aria-label="Message prot"
@@ -291,14 +294,14 @@ function Composer({
             }
           }}
           rows={1}
-          className="max-h-40 min-h-0 resize-none border-0 bg-transparent p-0 py-1.5 text-[13px] shadow-none focus-visible:ring-0 dark:bg-transparent"
+          className="max-h-40 min-h-0 resize-none border-0 bg-transparent p-0 py-1.5 font-mono text-[12.5px] leading-5 shadow-none focus-visible:ring-0 dark:bg-transparent"
         />
         {busy ? (
-          <Button size="icon-sm" variant="outline" aria-label="Stop" onClick={onStop} className="rounded-lg">
+          <Button size="icon-sm" variant="outline" aria-label="Stop" onClick={onStop} className="size-7 rounded-[7px]">
             <Square className="size-3 fill-current" />
           </Button>
         ) : (
-          <Button size="icon-sm" aria-label="Send" disabled={!ready} onClick={submit} className="rounded-lg">
+          <Button size="icon-sm" aria-label="Send" disabled={!ready} onClick={submit} className="size-7 rounded-[7px]">
             <ArrowUp className="size-4" />
           </Button>
         )}
@@ -328,10 +331,10 @@ function KeySetup({ onDone }: { onDone: () => void }) {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-5">
-      <div className="space-y-1.5">
-        <p className="text-lg font-semibold">{keys.anthropic ? 'Chat settings' : 'Connect Claude'}</p>
-        <p className="text-[13px] leading-5 text-muted-foreground">
+    <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-4 pt-2 pb-4">
+      <div className="space-y-1.5 font-mono text-[12.5px] leading-[1.7]">
+        <p className="font-bold">## {keys.anthropic ? 'Chat settings' : 'Connect Claude'}</p>
+        <p className="font-copy text-[12.5px] text-muted-foreground">
           Ask prot and the AI guide use your own Anthropic API key.
           {keys.anthropic && ' A key is saved. Enter a new one to replace it.'}
         </p>

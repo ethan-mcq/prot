@@ -1,8 +1,10 @@
+import { BookOpen } from 'lucide-react'
 import type { ChangedFile, Chapter } from '@shared/types'
 import { Checkbox } from '@/components/ui/checkbox'
 import { FileCard } from '@/components/file-card'
-import { FileRow } from '@/components/file-row'
+import { FileTree } from '@/components/file-tree'
 import { Markdown } from '@/components/markdown'
+import { PaneHeader } from '@/components/pane'
 import { pad2 } from '@/lib/paths'
 import { useReview } from '@/lib/review-context'
 import { chapterReviewKeys, isReviewed } from '@/lib/review-session'
@@ -25,18 +27,24 @@ export function ChapterStep({ index }: { index: number }) {
   const keys = chapterReviewKeys(chapter)
   const reviewed = isReviewed(session, keys)
 
+  const { ref } = detail.summary
+
   return (
-    <div className="@container px-8 py-8">
-      <div className="mx-auto grid max-w-[1400px] gap-8 @5xl:grid-cols-[minmax(0,340px)_minmax(0,1fr)]">
-        <aside className="scroll-quiet space-y-5 self-start @5xl:sticky @5xl:top-8 @5xl:max-h-[calc(100vh-14rem)] @5xl:overflow-y-auto @5xl:pr-2">
-          <div className="flex items-center justify-between">
-            <span className="micro-label">Chapter</span>
-            <span className="font-mono text-xs text-muted-foreground tabular-nums">
+    <div className="flex h-full gap-2">
+      <aside className="pane flex w-[340px] shrink-0 flex-col">
+        <PaneHeader
+          icon={<BookOpen />}
+          title="Chapter"
+          detail={`${ref.repo}#${ref.number}`}
+          actions={
+            <span className="px-1.5 font-mono text-[11px] text-muted-foreground tabular-nums">
               {pad2(index + 1)} / {pad2(session.guide.chapters.length)}
             </span>
-          </div>
-          <h2 className="text-[26px] leading-tight font-semibold tracking-tight">{chapter.title}</h2>
-          <label className="flex w-fit cursor-pointer items-center gap-2 rounded-md border bg-card px-2.5 py-1.5 text-sm shadow-xs transition-colors hover:bg-accent has-[[data-state=checked]]:border-added/40 has-[[data-state=checked]]:text-added">
+          }
+        />
+        <div className="scroll-quiet min-h-0 flex-1 space-y-5 overflow-y-auto px-4 pt-2 pb-5 font-mono text-[12.5px] leading-[1.7]">
+          <h2 className="font-display text-[40px] break-words">{chapter.title}</h2>
+          <label className="flex w-fit cursor-pointer items-center gap-2 rounded-[6px] border border-pane-border px-2 py-1 text-[12px] transition-colors hover:bg-accent has-[[data-state=checked]]:border-added/40 has-[[data-state=checked]]:text-added">
             <Checkbox
               checked={reviewed}
               aria-label="Chapter reviewed"
@@ -44,34 +52,31 @@ export function ChapterStep({ index }: { index: number }) {
             />
             Reviewed
           </label>
-          <Markdown className="text-[15px] leading-7 text-foreground/85">{chapter.summary}</Markdown>
+          <Markdown className="font-copy text-[13px] leading-[1.75] text-foreground/85">{chapter.summary}</Markdown>
           {files.length > 0 && (
-            <div className="space-y-2">
-              <p className="micro-label">Files {files.length}</p>
-              <ul className="-mx-2">
-                {files.map((file) => (
-                  <FileRow
-                    key={file.path}
-                    file={file}
-                    onSelect={() =>
-                      document.getElementById(`file-${file.path}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-                    }
-                  />
-                ))}
-              </ul>
-            </div>
-          )}
-        </aside>
-        <div className="min-w-0 space-y-4">
-          {files.map((file) => (
-            <FileCard key={file.path} file={file} />
-          ))}
-          {files.length === 0 && (
-            <p className="rounded-xl border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
-              This chapter has no file changes of its own.
-            </p>
+            <section className="space-y-1.5">
+              <h3 className="font-bold">
+                ## Files <span className="font-normal text-muted-foreground">{files.length}</span>
+              </h3>
+              <FileTree
+                files={files}
+                onSelect={(file) =>
+                  document.getElementById(`file-${file.path}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                }
+              />
+            </section>
           )}
         </div>
+      </aside>
+      <div className="scroll-quiet min-w-0 flex-1 space-y-2 overflow-y-auto rounded-[12px]">
+        {files.map((file) => (
+          <FileCard key={file.path} file={file} />
+        ))}
+        {files.length === 0 && (
+          <div className="pane px-6 py-10 text-center font-mono text-[12.5px] text-muted-foreground">
+            This chapter has no file changes of its own.
+          </div>
+        )}
       </div>
     </div>
   )

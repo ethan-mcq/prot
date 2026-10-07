@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { Loader2, Pencil, Plus, Trash2, UnfoldVertical } from 'lucide-react'
+import { Loader2, Pencil, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { ChangedFile, DiffHunk, DiffLine, DraftComment, ReviewComment } from '@shared/types'
 import { parsePatch } from '@shared/diff'
@@ -15,11 +15,12 @@ import { useReview } from '@/lib/review-context'
 import { draftAnchor } from '@/lib/review-session'
 import { cn, errorMessage } from '@/lib/utils'
 
-type Gap = { id: string; from: number; to: number | null; oldMinusNew: number; section: string | null }
+type Gap = { id: string; from: number; to: number | null; oldMinusNew: number }
 
 type Row =
   | { kind: 'line'; key: string; line: DiffLine; tokenSide: 'old' | 'new'; tokenIndex: number }
   | { kind: 'gap'; gap: Gap }
+  | { kind: 'hunk'; key: string; header: string; after: string | null }
 
 function buildRows(hunks: DiffHunk[], trailingGap: boolean): { rows: Row[]; oldSide: string[]; newSide: string[] } {
   const rows: Row[] = []
@@ -31,12 +32,14 @@ function buildRows(hunks: DiffHunk[], trailingGap: boolean): { rows: Row[]; oldS
     // A zero-length side in a hunk header names the line *before* the change.
     const newStart = hunk.newLines === 0 ? hunk.newStart + 1 : hunk.newStart
     const oldStart = hunk.oldLines === 0 ? hunk.oldStart + 1 : hunk.oldStart
-    if (newStart > nextNew) {
+    const gapId = newStart > nextNew ? `gap-${h}` : null
+    if (gapId) {
       rows.push({
         kind: 'gap',
-        gap: { id: `gap-${h}`, from: nextNew, to: newStart - 1, oldMinusNew: oldStart - newStart, section: hunk.section }
+        gap: { id: gapId, from: nextNew, to: newStart - 1, oldMinusNew: oldStart - newStart }
       })
     }
+    rows.push({ kind: 'hunk', key: `hunk-${h}`, header: hunk.header, after: gapId })
     hunk.lines.forEach((line, i) => {
       const key = `${h}:${i}`
       if (line.kind === 'del') {
@@ -52,7 +55,7 @@ function buildRows(hunks: DiffHunk[], trailingGap: boolean): { rows: Row[]; oldS
     oldMinusNew = oldStart + hunk.oldLines - nextNew
   })
   if (trailingGap && hunks.length > 0) {
-    rows.push({ kind: 'gap', gap: { id: 'gap-end', from: nextNew, to: null, oldMinusNew, section: null } })
+    rows.push({ kind: 'gap', gap: { id: 'gap-end', from: nextNew, to: null, oldMinusNew } })
   }
   return { rows, oldSide, newSide }
 }
@@ -117,7 +120,7 @@ export function DiffView({ file }: { file: ChangedFile }) {
 
   if (!file.patch) {
     return (
-      <p className="px-4 py-6 text-center text-sm text-muted-foreground">
+      <p className="px-4 py-6 text-center font-mono text-[12px] text-muted-foreground">
         No textual diff for this file. It may be binary, renamed without changes, or too large for GitHub to show.
       </p>
     )
@@ -129,8 +132,16 @@ export function DiffView({ file }: { file: ChangedFile }) {
   }
 
   return (
-    <div className="font-mono text-[12px] leading-5">
+    <div className="py-1 font-mono text-[12px] leading-5">
       {rows.map((row) => {
+        if (row.kind === 'hunk') {
+          if (row.after && expanded.includes(row.after) && content) return null
+          return (
+            <div key={row.key} className="truncate py-0.5 pr-4 pl-[86px] text-hunk select-none">
+              {row.header}
+            </div>
+          )
+        }
         if (row.kind === 'gap') {
           const gap = row.gap
           const to = gap.to ?? content?.length ?? null
@@ -147,7 +158,6 @@ export function DiffView({ file }: { file: ChangedFile }) {
             <GapButton
               key={gap.id}
               count={to === null ? null : to - gap.from + 1}
-              section={gap.section}
               loading={loadingGap === gap.id}
               onClick={() => void expand(gap)}
             />
@@ -184,8 +194,8 @@ export function DiffView({ file }: { file: ChangedFile }) {
         )
       })}
       {comments.outdated.length > 0 && (
-        <div className="border-t">
-          <p className="micro-label px-4 pt-3">Outdated comments</p>
+        <div className="border-t border-pane-border">
+          <p className="px-4 pt-3 text-muted-foreground">## Outdated comments</p>
           <CommentThread comments={comments.outdated} />
         </div>
       )}
@@ -194,9 +204,9 @@ export function DiffView({ file }: { file: ChangedFile }) {
 }
 
 const ROW_TONE = {
-  add: { row: 'bg-added-line', marker: 'text-added', sign: '+' },
-  del: { row: 'bg-removed-line', marker: 'text-removed', sign: '-' },
-  context: { row: '', marker: 'text-muted-foreground', sign: ' ' }
+  add: { row: 'bg-added-line', gutter: 'bg-added-mark', marker: 'text-added', sign: '+' },
+  del: { row: 'bg-removed-line', gutter: 'bg-removed-mark', marker: 'text-removed', sign: '-' },
+  context: { row: '', gutter: '', marker: 'text-muted-foreground', sign: ' ' }
 } as const
 
 function LineRow({ line, tokens, onComment }: { line: DiffLine; tokens: Token[] | undefined; onComment?: () => void }) {
@@ -204,10 +214,11 @@ function LineRow({ line, tokens, onComment }: { line: DiffLine; tokens: Token[] 
   const label = line.kind === 'del' ? `Comment on removed line ${line.oldLine}` : `Comment on line ${line.newLine}`
   return (
     <div className={cn('group/row relative flex min-w-0', tone.row)} data-new-line={line.newLine ?? undefined}>
-      <span className="w-12 shrink-0 pr-2 text-right text-muted-foreground/60 select-none tabular-nums">
+      {tone.gutter && <span aria-hidden className={cn('absolute inset-y-0 left-0 w-[4px]', tone.gutter)} />}
+      <span className="w-10 shrink-0 pr-2 text-right text-muted-foreground/55 select-none tabular-nums">
         {line.oldLine ?? ''}
       </span>
-      <span className="w-12 shrink-0 pr-2 text-right text-muted-foreground/60 select-none tabular-nums">
+      <span className="w-10 shrink-0 pr-2 text-right text-muted-foreground/55 select-none tabular-nums">
         {line.newLine ?? ''}
       </span>
       {onComment && (
@@ -216,12 +227,12 @@ function LineRow({ line, tokens, onComment }: { line: DiffLine; tokens: Token[] 
           tabIndex={-1}
           aria-label={label}
           onClick={onComment}
-          className="absolute top-0.5 left-1 flex size-4 items-center justify-center rounded-sm bg-sky-600 text-white opacity-0 shadow-sm transition-opacity group-hover/row:opacity-100 hover:bg-sky-700 focus-visible:opacity-100"
+          className="absolute top-0.5 left-1.5 flex size-4 items-center justify-center rounded-[4px] bg-command text-white opacity-0 transition-opacity group-hover/row:opacity-100 hover:brightness-110 focus-visible:opacity-100 dark:text-black"
         >
           <Plus className="size-3" strokeWidth={3} />
         </button>
       )}
-      <span className={cn('w-5 shrink-0 text-center select-none', tone.marker)}>{tone.sign}</span>
+      <span className={cn('w-6 shrink-0 text-center select-none', tone.marker)}>{tone.sign}</span>
       <span className="min-w-0 flex-1 pr-4 whitespace-pre-wrap [overflow-wrap:anywhere]">
         {tokens
           ? tokens.map((token, i) => (
@@ -237,12 +248,10 @@ function LineRow({ line, tokens, onComment }: { line: DiffLine; tokens: Token[] 
 
 function GapButton({
   count,
-  section,
   loading,
   onClick
 }: {
   count: number | null
-  section: string | null
   loading: boolean
   onClick: () => void
 }) {
@@ -252,24 +261,23 @@ function GapButton({
       type="button"
       onClick={onClick}
       disabled={loading}
-      className="flex w-full items-center gap-2 border-y border-dashed bg-muted/60 px-3 py-1 text-left font-sans text-xs text-muted-foreground transition-colors first:border-t-0 last:border-b-0 hover:bg-accent hover:text-foreground"
+      className="flex w-full items-center gap-2 py-0.5 pr-4 pl-[86px] text-left text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
     >
-      {loading ? <Loader2 className="size-3.5 animate-spin" /> : <UnfoldVertical className="size-3.5" />}
+      {loading ? <Loader2 className="size-3 animate-spin" /> : <span aria-hidden>⋯</span>}
       <span className="shrink-0 whitespace-nowrap">{label}</span>
-      {section && <span className="truncate font-mono text-[11px] opacity-70">{section}</span>}
     </button>
   )
 }
 
 function CommentThread({ comments }: { comments: ReviewComment[] }) {
   return (
-    <div className="border-y bg-card px-4 py-3 font-sans">
-      <div className="max-w-2xl space-y-3 rounded-lg border bg-background p-3 shadow-soft">
+    <div className="border-y border-pane-border bg-muted/50 py-2.5 pr-4 pl-[86px] font-sans">
+      <div className="max-w-2xl space-y-3 rounded-[8px] border border-pane-border bg-card p-3">
         {comments.map((comment) => (
           <div key={comment.id} className="flex gap-2.5">
             <UserAvatar user={comment.author} className="mt-0.5" />
             <div className="min-w-0 flex-1">
-              <div className="flex items-baseline gap-2 text-xs">
+              <div className="flex items-baseline gap-2 font-mono text-[11px]">
                 <span className="font-medium">{comment.author.login}</span>
                 <span className="text-muted-foreground">{relativeTime(comment.createdAt)}</span>
               </div>
@@ -299,10 +307,10 @@ function DraftCard({ draft }: { draft: DraftComment }) {
     )
   }
   return (
-    <div className="border-y bg-card px-4 py-3 font-sans">
-      <div className="max-w-2xl rounded-lg border border-l-2 border-l-modified bg-background p-3 shadow-soft">
+    <div className="border-y border-pane-border bg-muted/50 py-2.5 pr-4 pl-[86px] font-sans">
+      <div className="max-w-2xl rounded-[8px] border border-l-2 border-pane-border border-l-modified bg-card p-3">
         <div className="mb-1 flex items-center gap-2">
-          <span className="rounded-full bg-modified-bg px-2 py-px text-[11px] font-medium text-modified">Pending</span>
+          <span className="font-mono text-[11px] text-modified">~ pending</span>
           <span className="flex-1" />
           <Button variant="ghost" size="icon-xs" aria-label="Edit pending comment" onClick={() => setEditing(true)}>
             <Pencil />
@@ -336,7 +344,7 @@ function Composer({
   const [body, setBody] = useState(initial)
   const ready = body.trim().length > 0
   return (
-    <div className="border-y bg-card px-4 py-3 font-sans">
+    <div className="border-y border-pane-border bg-muted/50 py-2.5 pr-4 pl-[86px] font-sans">
       <div className="max-w-2xl space-y-2">
         <Textarea
           autoFocus

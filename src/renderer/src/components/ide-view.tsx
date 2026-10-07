@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, Folder, FolderOpen, Loader2, X } from 'lucide-react'
-import type { ChangedFile, FileStatus } from '@shared/types'
-import { Button } from '@/components/ui/button'
+import { ChevronLeft, ChevronRight, FolderTree, Loader2, X } from 'lucide-react'
+import type { ChangedFile } from '@shared/types'
 import { DiffStat } from '@/components/diff-stat'
 import { DiffView } from '@/components/diff-view'
 import { FileIcon } from '@/components/file-icon'
+import { STATUS_LETTER } from '@/components/file-tree'
+import { Frame, PaneButton, PaneHeader } from '@/components/pane'
 import { languageFor } from '@/lib/highlight'
 import { useHighlighted, useHotkeys } from '@/lib/hooks'
 import { fileLines, splitPath } from '@/lib/paths'
@@ -64,13 +65,6 @@ function ancestors(path: string): string[] {
   return parts.slice(0, -1).map((_, i) => parts.slice(0, i + 1).join('/'))
 }
 
-const STATUS_LETTER: Record<FileStatus, { letter: string; className: string }> = {
-  added: { letter: 'A', className: 'text-added' },
-  modified: { letter: 'M', className: 'text-modified' },
-  removed: { letter: 'D', className: 'text-removed' },
-  renamed: { letter: 'R', className: 'text-sky-600 dark:text-sky-400' }
-}
-
 export function IdeView({ path }: { path: string }) {
   const { detail, session, dispatch, loadTree } = useReview()
   const mode = session.ide.mode
@@ -124,77 +118,85 @@ export function IdeView({ path }: { path: string }) {
   const file = changed.get(path)
 
   return (
-    <div
-      role="region"
-      aria-label="IDE"
-      className="absolute inset-0 z-30 flex bg-background animate-in fade-in-0 duration-150"
-    >
-      <aside className="flex w-72 shrink-0 flex-col border-r bg-sidebar">
-        <div className="drag-region flex h-12 shrink-0 items-center gap-2 border-b px-3">
-          <div role="radiogroup" aria-label="Tree" className="no-drag flex rounded-md border bg-background p-0.5 text-xs">
-            {(['changed', 'all'] as TreeMode[]).map((value) => (
-              <button
-                key={value}
-                type="button"
-                role="radio"
-                aria-checked={mode === value}
-                onClick={() => dispatch({ type: 'ide/mode', mode: value })}
-                className={cn(
-                  'rounded-[5px] px-2.5 py-1 transition-colors',
-                  mode === value ? 'bg-accent font-medium text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'
-                )}
-              >
-                {value === 'changed' ? 'Changed' : 'All files'}
-              </button>
-            ))}
-          </div>
-          <span className="ml-auto font-mono text-[11px] text-muted-foreground tabular-nums">
-            {mode === 'changed' ? detail.files.length : (allPaths?.length ?? '')}
-          </span>
-        </div>
-        <div role="tree" aria-label="Files" className="scroll-quiet min-h-0 flex-1 overflow-y-auto px-1.5 py-2 text-[13px]">
-          {mode === 'all' && !allPaths && !treeError && (
-            <p className="flex items-center gap-2 px-2 py-2 text-xs text-muted-foreground">
-              <Loader2 className="size-3.5 animate-spin" /> Loading repository tree
-            </p>
-          )}
-          {mode === 'all' && treeError && <p className="px-2 py-2 text-xs text-destructive">{treeError}</p>}
-          <TreeLevel
-            entries={tree}
-            depth={0}
-            selected={path}
-            changed={changed}
-            isOpen={isOpen}
-            onToggle={(dir) =>
-              setToggled((prev) => {
-                const key = `${mode}:${dir}`
-                const copy = new Set(prev)
-                if (copy.has(key)) copy.delete(key)
-                else copy.add(key)
-                return copy
-              })
-            }
-            onSelect={select}
-          />
+    <div role="region" aria-label="IDE" className="absolute inset-0 z-30 flex gap-2 animate-in fade-in-0 duration-150">
+      <aside className="pane flex w-[300px] shrink-0 flex-col">
+        <PaneHeader
+          icon={<FolderTree />}
+          title="Files"
+          actions={
+            <div role="radiogroup" aria-label="Tree" className="flex rounded-[7px] bg-muted p-0.5 text-[11.5px]">
+              {(['changed', 'all'] as TreeMode[]).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="radio"
+                  aria-checked={mode === value}
+                  onClick={() => dispatch({ type: 'ide/mode', mode: value })}
+                  className={cn(
+                    'rounded-[5px] px-2 py-0.5 transition-colors',
+                    mode === value ? 'bg-card font-medium text-foreground shadow-raised' : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  {value === 'changed' ? 'Changed' : 'All files'}
+                </button>
+              ))}
+            </div>
+          }
+        />
+        <div className="scroll-quiet min-h-0 flex-1 overflow-y-auto px-2.5 pt-3 pb-2.5">
+          <Frame
+            index={1}
+            title={mode === 'changed' ? 'Files - Changed' : 'Files - Repository'}
+            count={mode === 'changed' ? detail.files.length : allPaths?.length}
+          >
+            <div role="tree" aria-label="Files" className="font-mono text-[12px]">
+              {mode === 'all' && !allPaths && !treeError && (
+                <p className="flex items-center gap-2 px-1.5 py-1 text-muted-foreground">
+                  <Loader2 className="size-3 animate-spin" /> loading repository tree
+                </p>
+              )}
+              {mode === 'all' && treeError && <p className="px-1.5 py-1 text-destructive">! {treeError}</p>}
+              <TreeLevel
+                entries={tree}
+                depth={0}
+                selected={path}
+                changed={changed}
+                isOpen={isOpen}
+                onToggle={(dir) =>
+                  setToggled((prev) => {
+                    const key = `${mode}:${dir}`
+                    const copy = new Set(prev)
+                    if (copy.has(key)) copy.delete(key)
+                    else copy.add(key)
+                    return copy
+                  })
+                }
+                onSelect={select}
+              />
+            </div>
+          </Frame>
         </div>
       </aside>
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="drag-region flex h-12 shrink-0 items-center gap-3 border-b px-4">
-          <Breadcrumb path={path} />
-          {file && <DiffStat additions={file.additions} deletions={file.deletions} />}
-          <span className="flex-1" />
-          <div className="no-drag flex items-center gap-1">
-            <Button variant="ghost" size="sm" onClick={() => move(-1)} aria-label="Previous file" title="Previous file (k)">
-              <ChevronLeft />
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => move(1)} aria-label="Next file" title="Next file (j)">
-              <ChevronRight />
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => dispatch({ type: 'ide/close' })} aria-label="Close IDE">
-              <X /> <kbd className="font-mono text-[10px] text-muted-foreground">Esc</kbd>
-            </Button>
-          </div>
-        </header>
+      <div className="pane flex min-w-0 flex-1 flex-col overflow-hidden">
+        <PaneHeader
+          icon={<FileIcon path={path} />}
+          title={<Breadcrumb path={path} />}
+          className="border-b border-pane-border"
+          actions={
+            <>
+              {file && <DiffStat additions={file.additions} deletions={file.deletions} className="mr-2 text-[11.5px]" />}
+              <PaneButton onClick={() => move(-1)} aria-label="Previous file" title="Previous file (k)">
+                <ChevronLeft />
+              </PaneButton>
+              <PaneButton onClick={() => move(1)} aria-label="Next file" title="Next file (j)">
+                <ChevronRight />
+              </PaneButton>
+              <PaneButton onClick={() => dispatch({ type: 'ide/close' })} aria-label="Close IDE" title="Close (Esc)">
+                <X />
+              </PaneButton>
+            </>
+          }
+        />
         <FilePane key={path} path={path} file={file} />
       </div>
     </div>
@@ -218,11 +220,10 @@ function TreeLevel({
   onToggle: (dir: string) => void
   onSelect: (path: string) => void
 }) {
-  const indent = { paddingLeft: 8 + depth * 12 }
+  const indent = { paddingLeft: 6 + depth * 14 }
   return entries.map((entry) => {
     if (entry.kind === 'dir') {
       const open = isOpen(entry.path)
-      const Icon = open ? FolderOpen : Folder
       return (
         <div key={entry.path} role="none">
           <button
@@ -232,10 +233,11 @@ function TreeLevel({
             aria-label={entry.path}
             onClick={() => onToggle(entry.path)}
             style={indent}
-            className="flex h-7 w-full items-center gap-1.5 rounded-md pr-2 text-left text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+            className="flex h-6 w-full items-center gap-1.5 rounded-[5px] pr-2 text-left font-medium hover:bg-accent"
           >
-            <ChevronRight className={cn('size-3 shrink-0 transition-transform', open && 'rotate-90')} />
-            <Icon className="size-4 shrink-0" strokeWidth={1.75} />
+            <span aria-hidden className="w-2.5 shrink-0 text-[10px] text-muted-foreground">
+              {open ? '▼' : '▶'}
+            </span>
             <span className="truncate" title={entry.path}>
               {entry.name}
             </span>
@@ -268,19 +270,18 @@ function TreeLevel({
         aria-label={entry.path}
         title={entry.path}
         onClick={() => onSelect(entry.path)}
-        style={{ paddingLeft: 8 + depth * 12 + 16 }}
+        style={{ paddingLeft: 6 + depth * 14 }}
         className={cn(
-          'flex h-7 w-full items-center gap-1.5 rounded-md pr-2 text-left',
-          active ? 'bg-background font-medium shadow-xs ring-1 ring-border' : 'hover:bg-sidebar-accent',
+          'flex h-6 w-full items-center gap-1.5 rounded-[5px] pr-2 text-left',
+          active ? 'bg-selection font-medium' : 'hover:bg-accent',
           !file && !active && 'text-muted-foreground'
         )}
       >
-        <FileIcon path={entry.path} className="size-3.5" />
+        <span className={cn('w-2.5 shrink-0 text-center font-semibold', status?.className)}>{status?.letter}</span>
         <span className={cn('min-w-0 flex-1 truncate', file?.status === 'removed' && 'line-through opacity-70')}>
           {entry.name}
         </span>
         {file && <DiffStat additions={file.additions} deletions={file.deletions} className="text-[10.5px]" />}
-        {status && <span className={cn('w-3 shrink-0 text-center font-mono text-[11px] font-semibold', status.className)}>{status.letter}</span>}
       </button>
     )
   })
@@ -289,10 +290,9 @@ function TreeLevel({
 function Breadcrumb({ path }: { path: string }) {
   const { name, dir } = splitPath(path)
   return (
-    <nav aria-label="Breadcrumb" className="no-drag flex min-w-0 items-center gap-1 text-[13px]" title={path}>
-      <FileIcon path={path} />
-      {dir && <span className="min-w-0 truncate text-muted-foreground">{dir.split('/').join(' / ')} /</span>}
-      <span className="shrink-0 font-medium">{name}</span>
+    <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1 font-mono text-[12px]" title={path}>
+      {dir && <span className="min-w-0 truncate font-normal text-muted-foreground">{dir.split('/').join(' › ')} ›</span>}
+      <span className="shrink-0">{name}</span>
     </nav>
   )
 }
@@ -374,20 +374,20 @@ function FullFile({ path }: { path: string }) {
 
   if (!state) {
     return (
-      <p className="flex items-center gap-2 p-6 text-sm text-muted-foreground">
-        <Loader2 className="size-4 animate-spin" /> Loading {splitPath(path).name}
+      <p className="flex items-center gap-2 p-6 font-mono text-[12px] text-muted-foreground">
+        <Loader2 className="size-3.5 animate-spin" /> loading {splitPath(path).name}
       </p>
     )
   }
-  if ('error' in state) return <p className="p-6 text-sm text-destructive">{state.error}</p>
+  if ('error' in state) return <p className="p-6 font-mono text-[12px] text-destructive">! {state.error}</p>
   return (
     <div className="py-2 font-mono text-[12px] leading-5">
-      <p className="micro-label px-4 pb-2">Unchanged in this pull request · read only</p>
+      <p className="px-4 pb-2 text-muted-foreground"># unchanged in this pull request · read only</p>
       {lines.map((text, i) => {
         const lineTokens = tokens?.[i]
         return (
           <div key={i} className="flex" data-new-line={i + 1}>
-            <span className="w-14 shrink-0 pr-3 text-right text-muted-foreground/60 select-none tabular-nums">{i + 1}</span>
+            <span className="w-14 shrink-0 pr-3 text-right text-muted-foreground/55 select-none tabular-nums">{i + 1}</span>
             <span className="min-w-0 flex-1 pr-4 whitespace-pre-wrap [overflow-wrap:anywhere]">
               {lineTokens
                 ? lineTokens.map((token, t) => (

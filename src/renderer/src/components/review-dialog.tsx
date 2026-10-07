@@ -11,13 +11,13 @@ import { useReview } from '@/lib/review-context'
 import { cn, errorMessage } from '@/lib/utils'
 
 const CHOICES: { event: ReviewEvent; label: string; hint: string; tone: string }[] = [
-  { event: 'COMMENT', label: 'Comment', hint: 'General feedback without a verdict.', tone: 'data-[state=checked]:border-foreground/40' },
-  { event: 'APPROVE', label: 'Approve', hint: 'Ready to merge as it is.', tone: 'data-[state=checked]:border-added/60 data-[state=checked]:bg-added-bg/50' },
+  { event: 'COMMENT', label: 'Comment', hint: 'General feedback without a verdict.', tone: 'data-[state=checked]:border-frame data-[state=checked]:bg-muted' },
+  { event: 'APPROVE', label: 'Approve', hint: 'Ready to merge as it is.', tone: 'data-[state=checked]:border-added/50 data-[state=checked]:bg-added-line data-[state=checked]:text-added' },
   {
     event: 'REQUEST_CHANGES',
     label: 'Request changes',
     hint: 'Must be addressed before merging.',
-    tone: 'data-[state=checked]:border-removed/60 data-[state=checked]:bg-removed-bg/50'
+    tone: 'data-[state=checked]:border-removed/50 data-[state=checked]:bg-removed-line data-[state=checked]:text-removed'
   }
 ]
 
@@ -65,21 +65,23 @@ export function ReviewDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="gap-5 sm:max-w-xl">
-        <DialogHeader>
-          <DialogTitle className="text-xl">Finish your review</DialogTitle>
-          <DialogDescription>
+      <DialogContent className="gap-5 p-5 sm:max-w-xl">
+        <DialogHeader className="gap-1">
+          <DialogTitle className="text-[15px] font-medium">Finish your review</DialogTitle>
+          <DialogDescription className="font-mono text-[11.5px]">
             {detail.summary.ref.owner}/{detail.summary.ref.repo}#{detail.summary.ref.number}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-2">
-          <Label htmlFor="review-summary">Summary</Label>
+          <Label htmlFor="review-summary" className="font-mono text-[12px] font-bold">
+            Summary
+          </Label>
           <Textarea
             id="review-summary"
             placeholder="Overall thoughts on this change"
             value={body}
             onChange={(e) => setBody(e.target.value)}
-            className="min-h-28"
+            className="min-h-28 font-mono text-[12.5px]"
           />
         </div>
         <RadioGroupPrimitive.Root
@@ -98,25 +100,28 @@ export function ReviewDialog({
                 disabled={blocked}
                 title={blocked ? 'You cannot approve or request changes on your own pull request' : undefined}
                 className={cn(
-                  'flex flex-col items-start gap-1 rounded-lg border bg-card p-3 text-left transition-colors outline-none hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50',
+                  'flex flex-col items-start gap-1 rounded-[9px] border border-pane-border bg-card p-3 text-left transition-colors outline-none hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50',
                   choice.tone
                 )}
               >
-                <span className="text-sm font-medium">{choice.label}</span>
-                <span className="text-xs leading-4 text-muted-foreground">{choice.hint}</span>
+                <span className="text-[13px] font-medium">{choice.label}</span>
+                <span className="font-mono text-[11px] leading-4 text-muted-foreground">{choice.hint}</span>
               </RadioGroupPrimitive.Item>
             )
           })}
         </RadioGroupPrimitive.Root>
         <div className="space-y-2">
-          <p className="micro-label">Pending comments {drafts.length}</p>
+          <p className="font-mono text-[12px] font-bold">
+            ## Pending comments <span className="font-normal text-muted-foreground">{drafts.length}</span>
+          </p>
           {drafts.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Hover a line in any diff and press + to add one.</p>
+            <p className="font-mono text-[12px] text-muted-foreground">Hover a line in any diff and press + to add one.</p>
           ) : (
-            <ul className="scroll-quiet max-h-32 space-y-1 overflow-y-auto rounded-md border bg-muted/40 p-2">
+            <ul className="scroll-quiet max-h-32 space-y-1 overflow-y-auto font-mono text-[12px]">
               {drafts.map((draft) => (
-                <li key={draft.id} className="flex gap-2 text-xs">
-                  <span className="shrink-0 font-mono text-muted-foreground">
+                <li key={draft.id} className="flex gap-2">
+                  <span aria-hidden className="text-muted-foreground">•</span>
+                  <span className="shrink-0 text-path">
                     {draft.path.split('/').pop()}:{draft.line}
                   </span>
                   <span className="truncate">{draft.body}</span>
@@ -126,7 +131,7 @@ export function ReviewDialog({
           )}
         </div>
         <DialogFooter className="items-center">
-          {missing && <span className="mr-auto text-xs text-muted-foreground">{missing}</span>}
+          {missing && <span className="mr-auto font-mono text-[11.5px] text-muted-foreground">{missing}</span>}
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>

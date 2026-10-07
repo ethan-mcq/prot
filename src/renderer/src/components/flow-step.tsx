@@ -1,8 +1,9 @@
 import { useLayoutEffect, useRef, useState, type MouseEvent } from 'react'
-import { Check, Maximize2 } from 'lucide-react'
+import { Check, Maximize2, Workflow } from 'lucide-react'
 import type { FlowNode } from '@shared/types'
 import { DiffStat } from '@/components/diff-stat'
 import { chapterFiles } from '@/components/chapter-step'
+import { DashedFrame, PaneHeader } from '@/components/pane'
 import { pad2 } from '@/lib/paths'
 import { useReview } from '@/lib/review-context'
 import { chapterReviewKeys, isReviewed } from '@/lib/review-session'
@@ -12,53 +13,53 @@ const PILL_MIN = 176
 const GAP_X = 40
 
 export function FlowStep() {
-  const { session } = useReview()
+  const { detail, session } = useReview()
   const { flow } = session.guide
+  const { ref } = detail.summary
   return (
-    <div className="mx-auto max-w-[1400px] space-y-10 px-8 py-8">
-      <section className="space-y-4">
-        <p className="micro-label">Flow</p>
-        <h2 className="text-[28px] leading-tight font-semibold tracking-tight">How the change fits together</h2>
-        {flow.nodes.length > 0 ? (
-          <div className="overflow-hidden rounded-xl border bg-card shadow-soft">
-            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b px-5 py-3">
-              <span className="micro-label text-foreground">Before / after</span>
-              <span className="flex-1" />
-              <Legend tone="added" label="Added" />
-              <Legend tone="modified" label="Modified" />
-              <Legend tone="context" label="Existing code" />
-            </div>
-            {flow.caption && <p className="border-b px-5 py-3 text-sm leading-6 text-foreground/85">{flow.caption}</p>}
-            <div className="dot-grid bg-background px-6 py-8">
-              <Serpentine nodes={flow.nodes} />
-            </div>
+    <div className="pane flex h-full flex-col">
+      <PaneHeader icon={<Workflow />} title="Flow" detail={`${ref.repo}#${ref.number}`} />
+      <div className="scroll-quiet min-h-0 flex-1 overflow-y-auto px-5 pt-2 pb-6 font-mono text-[12.5px] leading-[1.7]">
+        <div className="max-w-[1100px] space-y-6">
+          <div className="space-y-2">
+            <h2 className="font-display text-[44px]">Flow</h2>
+            {flow.caption && <p className="max-w-[720px] font-copy text-[13px] leading-[1.75] text-foreground/85">{flow.caption}</p>}
           </div>
-        ) : (
-          <p className="max-w-2xl text-[15px] leading-7 text-muted-foreground">
-            This guide has no call flow to draw, usually because the change is configuration, docs or a set of
-            independent edits. Read it chapter by chapter instead.
-          </p>
-        )}
-      </section>
-      <ChapterList />
+          {flow.nodes.length > 0 ? (
+            <DashedFrame
+              label={
+                <span className="flex flex-wrap items-center justify-between gap-x-6">
+                  <span>{`F L O W   nodes: ${flow.nodes.length}`}</span>
+                  <span className="tracking-normal">
+                    <span className="text-added">+ added</span>
+                    <span className="ml-4 text-modified">~ modified</span>
+                    <span className="ml-4">· existing</span>
+                  </span>
+                </span>
+              }
+            >
+              <div className="px-7 py-9">
+                <Serpentine nodes={flow.nodes} />
+              </div>
+            </DashedFrame>
+          ) : (
+            <p className="max-w-[720px] font-copy text-[13px] leading-[1.75] text-muted-foreground">
+              This guide has no call flow to draw, usually because the change is configuration, docs or a set of
+              independent edits. Read it chapter by chapter instead.
+            </p>
+          )}
+          <ChapterList />
+        </div>
+      </div>
     </div>
   )
 }
 
 const TONE = {
-  added: { pill: 'border-l-added bg-added-bg/60', sign: '+', signClass: 'text-added' },
-  modified: { pill: 'border-l-modified bg-modified-bg/60', sign: '~', signClass: 'text-modified' },
-  context: { pill: 'border-l-border bg-context-pill text-muted-foreground', sign: '', signClass: '' }
+  added: { pill: 'text-added', sign: '+' },
+  modified: { pill: 'text-modified', sign: '~' },
+  context: { pill: 'text-muted-foreground', sign: '·' }
 } as const
-
-function Legend({ tone, label }: { tone: keyof typeof TONE; label: string }) {
-  return (
-    <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-      <span className={cn('h-3 w-4 rounded-sm border border-l-[3px]', TONE[tone].pill)} />
-      {label}
-    </span>
-  )
-}
 
 function useColumns(count: number) {
   const ref = useRef<HTMLDivElement>(null)
@@ -129,7 +130,7 @@ function Arrow({ direction, solid }: { direction: 'left' | 'right' | 'down'; sol
   const stroke = { strokeDasharray: solid ? undefined : '3 3' }
   if (direction === 'down') {
     return (
-      <svg aria-hidden width="10" height="32" className="text-muted-foreground/60">
+      <svg aria-hidden width="10" height="32" className="text-frame">
         <line x1="5" y1="2" x2="5" y2="27" stroke="currentColor" style={stroke} />
         <path d="M1.5 24 L5 29 L8.5 24" fill="none" stroke="currentColor" />
       </svg>
@@ -141,7 +142,7 @@ function Arrow({ direction, solid }: { direction: 'left' | 'right' | 'down'; sol
       aria-hidden
       width={GAP_X}
       height="10"
-      className={cn('absolute top-1/2 -translate-y-1/2 text-muted-foreground/60', left ? 'right-full' : 'left-full')}
+      className={cn('absolute top-1/2 -translate-y-1/2 text-frame', left ? 'right-full' : 'left-full')}
     >
       <line x1={left ? 7 : 4} y1="5" x2={left ? GAP_X - 4 : GAP_X - 7} y2="5" stroke="currentColor" style={stroke} />
       <path
@@ -182,12 +183,12 @@ function FlowPill({ node }: { node: FlowNode }) {
         title={hint || node.label}
         aria-label={node.label}
         className={cn(
-          'flex h-9 w-full items-center gap-1.5 rounded-md border border-l-[3px] px-2.5 text-left font-mono text-[12px] shadow-xs transition-[box-shadow,transform] disabled:cursor-default',
+          'flex h-8 w-full items-center gap-2 rounded-[7px] border border-pane-border bg-card px-2.5 text-left font-mono text-[12px] transition-colors disabled:cursor-default',
           tone.pill,
-          clickable && 'hover:-translate-y-px hover:shadow-soft'
+          clickable && 'hover:border-frame hover:bg-accent'
         )}
       >
-        {tone.sign && <span className={cn('font-semibold', tone.signClass)}>{tone.sign}</span>}
+        <span aria-hidden className="font-semibold">{tone.sign}</span>
         <span className="truncate">{node.label}</span>
       </button>
       {hasChapter && (
@@ -195,7 +196,7 @@ function FlowPill({ node }: { node: FlowNode }) {
           type="button"
           aria-label={`Go to chapter ${chapterIndex + 1}`}
           onClick={() => dispatch({ type: 'step/go', index: chapterIndex + 2 })}
-          className="absolute -top-2 -right-2 rounded-full border bg-background px-1.5 font-mono text-[10px] leading-4 text-muted-foreground shadow-xs transition-colors hover:border-foreground/30 hover:text-foreground"
+          className="absolute -top-2 -right-2 rounded-[4px] border border-pane-border bg-card px-1 font-mono text-[10px] leading-[14px] text-muted-foreground transition-colors hover:border-frame hover:text-foreground"
         >
           {pad2(chapterIndex + 1)}
         </button>
@@ -206,7 +207,7 @@ function FlowPill({ node }: { node: FlowNode }) {
           aria-label={`Open ${node.file} in IDE`}
           title="Open in IDE"
           onClick={openFile}
-          className="absolute -right-2 -bottom-2 flex size-5 items-center justify-center rounded-full border bg-background text-muted-foreground opacity-0 shadow-xs transition-opacity group-hover/pill:opacity-100 hover:text-foreground focus-visible:opacity-100"
+          className="absolute -right-2 -bottom-2 flex size-5 items-center justify-center rounded-[4px] border border-pane-border bg-card text-muted-foreground opacity-0 transition-opacity group-hover/pill:opacity-100 hover:text-foreground focus-visible:opacity-100"
         >
           <Maximize2 className="size-2.5" />
         </button>
@@ -218,9 +219,11 @@ function FlowPill({ node }: { node: FlowNode }) {
 export function ChapterList() {
   const { detail, session, dispatch } = useReview()
   return (
-    <section className="@container space-y-4">
-      <p className="micro-label">Chapters {session.guide.chapters.length}</p>
-      <ol className="grid gap-3 @3xl:grid-cols-2">
+    <section className="space-y-2">
+      <h3 className="font-bold">
+        ## Chapters <span className="font-normal text-muted-foreground">{session.guide.chapters.length}</span>
+      </h3>
+      <ol>
         {session.guide.chapters.map((chapter, index) => {
           const files = chapterFiles(chapter, detail.files)
           const additions = files.reduce((sum, file) => sum + file.additions, 0)
@@ -231,20 +234,23 @@ export function ChapterList() {
               <button
                 type="button"
                 onClick={() => dispatch({ type: 'step/go', index: index + 2 })}
-                className="flex h-full w-full gap-4 rounded-xl border bg-card p-4 text-left shadow-soft transition-colors hover:border-foreground/20"
+                className="flex w-full gap-2.5 rounded-[6px] px-2 py-1 text-left transition-colors hover:bg-accent"
               >
-                <span className="font-mono text-xs text-muted-foreground tabular-nums">{pad2(index + 1)}</span>
-                <span className="min-w-0 flex-1 space-y-1">
-                  <span className="flex items-center gap-2">
-                    <span className="text-[17px] leading-snug font-semibold">{chapter.title}</span>
-                    {done && <Check aria-label="Reviewed" className="size-4 shrink-0 text-added" strokeWidth={2.5} />}
-                  </span>
-                  <span className="line-clamp-2 block text-[13px] leading-5 text-muted-foreground">{chapter.summary}</span>
-                  <span className="flex items-center gap-3 pt-1 text-xs text-muted-foreground">
-                    <span>
+                <span aria-hidden className="text-muted-foreground">•</span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-2.5">
+                    <span className="text-muted-foreground tabular-nums">{pad2(index + 1)}</span>
+                    <span className="min-w-0 truncate font-medium">{chapter.title}</span>
+                    {done && <Check aria-label="Reviewed" className="size-3.5 shrink-0 text-added" strokeWidth={3} />}
+                    <span className="flex-1" />
+                    <span className="shrink-0 text-[11.5px] text-muted-foreground">
                       {files.length} {files.length === 1 ? 'file' : 'files'}
                     </span>
-                    <DiffStat additions={additions} deletions={deletions} />
+                    <DiffStat additions={additions} deletions={deletions} className="text-[11.5px]" />
+                  </span>
+                  <span className="flex gap-2 text-muted-foreground">
+                    <span aria-hidden>└</span>
+                    <span className="line-clamp-1">{chapter.summary}</span>
                   </span>
                 </span>
               </button>

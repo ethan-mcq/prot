@@ -1,11 +1,12 @@
 import { useState } from 'react'
+import { GitCompare, ScrollText } from 'lucide-react'
 import { toast } from 'sonner'
 import type { ChangedFile, Guide } from '@shared/types'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { FileRow } from '@/components/file-row'
+import { FileTree } from '@/components/file-tree'
 import { Markdown } from '@/components/markdown'
-import { pad2 } from '@/lib/paths'
+import { PaneHeader } from '@/components/pane'
 import { errorMessage } from '@/lib/utils'
 import { useReview } from '@/lib/review-context'
 
@@ -19,55 +20,63 @@ export function guideOrder(guide: Guide, files: ChangedFile[]): ChangedFile[] {
   return [...files].sort((a, b) => (rank.get(a.path) ?? Infinity) - (rank.get(b.path) ?? Infinity))
 }
 
+const FILE_COUNT = /^(.*?)\s*\((\d+ files?)\)$/
+
 export function OverviewStep() {
   const { detail, session, dispatch } = useReview()
   const { overview } = session.guide
   const files = guideOrder(session.guide, detail.files)
+  const { ref } = detail.summary
 
   return (
-    <div className="@container px-8 py-8">
-      <div className="mx-auto grid max-w-[1400px] gap-10 @4xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <div className="min-w-0 space-y-8">
-          <section className="space-y-4">
-            <p className="micro-label">Before you start</p>
-            <h2 className="text-[28px] leading-tight font-semibold tracking-tight">Overview</h2>
-            <Markdown className="text-[15px] leading-7 text-foreground/85">{overview.summary}</Markdown>
+    <div className="flex h-full gap-2">
+      <div className="pane flex min-w-0 flex-1 flex-col">
+        <PaneHeader icon={<ScrollText />} title="Overview" detail={`${ref.repo}#${ref.number}`} />
+        <div className="scroll-quiet min-h-0 flex-1 overflow-y-auto px-5 pt-2 pb-6 font-mono text-[12.5px] leading-[1.7]">
+          <div className="max-w-[720px] space-y-6">
+            <h2 className="font-display text-[44px] text-foreground">Overview</h2>
+            <section className="space-y-2">
+              <h3 className="font-bold">## Summary</h3>
+              <Markdown className="font-copy text-[13px] leading-[1.75] text-foreground/85">{overview.summary}</Markdown>
+            </section>
             {overview.points.length > 0 && (
-              <ol className="space-y-3 pt-1">
-                {overview.points.map((point, i) => (
-                  <li key={i} className="flex gap-3">
-                    <span className="mt-0.5 flex h-5 shrink-0 items-center rounded-md border bg-card px-1.5 font-mono text-[11px] text-muted-foreground tabular-nums">
-                      {pad2(i + 1)}
-                    </span>
-                    <Markdown className="text-[14px] leading-6">{point}</Markdown>
-                  </li>
-                ))}
-              </ol>
+              <ul className="space-y-1.5">
+                {overview.points.map((point, i) => {
+                  const [, text, count] = FILE_COUNT.exec(point) ?? [point, point, null]
+                  return (
+                    <li key={i} className="flex gap-2.5">
+                      <span aria-hidden className="text-muted-foreground">•</span>
+                      <div className="min-w-0">
+                        <Markdown className="text-[12.5px] leading-[1.7]">{text ?? point}</Markdown>
+                        {count && <p className="text-muted-foreground">└ {count}</p>}
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
             )}
-          </section>
-          <section className="space-y-3 border-t pt-6">
-            <p className="micro-label">Description</p>
-            {detail.body.trim() ? (
-              <Markdown className="text-foreground/85">{detail.body}</Markdown>
-            ) : (
-              <p className="text-sm text-muted-foreground italic">No description provided.</p>
-            )}
-          </section>
-          <ConversationComment />
-        </div>
-        <section className="min-w-0 space-y-3 self-start rounded-xl border bg-card p-4 shadow-soft">
-          <div className="flex items-baseline justify-between px-1">
-            <h3 className="text-sm font-medium">
-              Files <span className="ml-1 font-mono text-xs text-muted-foreground">{files.length}</span>
-            </h3>
-            <span className="text-xs text-muted-foreground">in reading order</span>
+            <section className="space-y-2">
+              <h3 className="font-bold">## Description</h3>
+              {detail.body.trim() ? (
+                <Markdown className="font-copy text-[13px] leading-[1.75] text-foreground/85">{detail.body}</Markdown>
+              ) : (
+                <p className="text-muted-foreground">No description provided.</p>
+              )}
+            </section>
+            <ConversationComment />
           </div>
-          <ul>
-            {files.map((file) => (
-              <FileRow key={file.path} file={file} onSelect={() => dispatch({ type: 'ide/open', path: file.path })} />
-            ))}
-          </ul>
-        </section>
+        </div>
+      </div>
+      <div className="pane flex w-[380px] shrink-0 flex-col">
+        <PaneHeader
+          icon={<GitCompare />}
+          title="Changed files"
+          detail="in reading order"
+          actions={<span className="px-1.5 font-mono text-[11px] text-muted-foreground tabular-nums">{files.length}</span>}
+        />
+        <div className="scroll-quiet min-h-0 flex-1 overflow-y-auto px-3 pb-3">
+          <FileTree files={files} onSelect={(file) => dispatch({ type: 'ide/open', path: file.path })} />
+        </div>
       </div>
     </div>
   )
@@ -92,14 +101,14 @@ function ConversationComment() {
   }
 
   return (
-    <section className="space-y-3 border-t pt-6">
-      <p className="micro-label">Conversation</p>
+    <section className="space-y-2">
+      <h3 className="font-bold">## Conversation</h3>
       <Textarea
         aria-label="Comment on the pull request"
         placeholder="Add a comment to the conversation"
         value={body}
         onChange={(event) => setBody(event.target.value)}
-        className="min-h-20 bg-card"
+        className="min-h-20 bg-card font-mono text-[12.5px]"
       />
       <div className="flex justify-end">
         <Button size="sm" variant="outline" disabled={!body.trim() || sending} onClick={() => void send()}>
