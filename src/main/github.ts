@@ -8,16 +8,17 @@ import type {
   ReviewInput
 } from '@shared/types'
 import {
+  graphqlUrl,
   mergeBuckets,
   toPullDetail,
-  toPullSummary,
   toReviewComment,
+  toSearchResult,
   toUser,
   type RawFile,
   type RawPull,
   type RawReview,
   type RawReviewComment,
-  type RawSearchItem,
+  type RawSearchResponse,
   type RawUser
 } from './github-map'
 
@@ -25,9 +26,32 @@ const MAX_FILE_PAGES = 30
 const REQUEST_TIMEOUT_MS = 30_000
 
 const SEARCH_QUERIES: Record<PullBucket, string> = {
-  review: 'is:pr is:open archived:false review-requested:@me',
-  mine: 'is:pr is:open archived:false author:@me'
+  review: 'is:pr is:open archived:false review-requested:@me sort:updated-desc',
+  mine: 'is:pr is:open archived:false author:@me sort:updated-desc'
 }
+
+const INBOX_QUERY = `query Inbox($q: String!) {
+  search(query: $q, type: ISSUE, first: 50) {
+    nodes {
+      __typename
+      ... on PullRequest {
+        number
+        title
+        url
+        isDraft
+        createdAt
+        updatedAt
+        baseRefName
+        headRefName
+        isCrossRepository
+        repository { nameWithOwner defaultBranchRef { name } }
+        author { login avatarUrl }
+        comments { totalCount }
+        labels(first: 10) { nodes { name color } }
+      }
+    }
+  }
+}`
 
 export class GitHubError extends Error {
   constructor(
@@ -147,10 +171,13 @@ export class GitHubClient {
   }
 
   private async search(bucket: PullBucket): Promise<PullSummary[]> {
-    const raw = await this.json<{ items: RawSearchItem[] }>('/search/issues', {
-      query: { q: SEARCH_QUERIES[bucket], per_page: '50', sort: 'updated' }
+    const raw = await this.json<RawSearchResponse>(new URL(graphqlUrl(this.baseUrl)), {
+      method: 'POST',
+      body: { query: INBOX_QUERY, variables: { q: SEARCH_QUERIES[bucket] } }
     })
-    return raw.items.map((item) => toPullSummary(item, bucket))
+    const result = toSearchResult(raw, bucket)
+    if ('error' in result) throw new GitHubError(200, result.error)
+    return result.pulls
   }
 
   private async listFiles(ref: PullRef): Promise<RawFile[]> {
@@ -165,13 +192,13 @@ export class GitHubClient {
     return files
   }
 
-  private async json<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  private async json<T>(path: string | URL, options: RequestOptions = {}): Promise<T> {
     const res = await this.request(path, options)
     return (await res.json()) as T
   }
 
-  private async request(path: string, options: RequestOptions = {}): Promise<Response> {
-    const url = new URL(this.baseUrl + path)
+  private async request(path: string | URL, options: RequestOptions = {}): Promise<Response> {
+    const url = typeof path === 'string' ? new URL(this.baseUrl + path) : path
     for (const [key, value] of Object.entries(options.query ?? {})) {
       url.searchParams.set(key, value)
     }

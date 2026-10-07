@@ -1,4 +1,5 @@
 import type { ComponentProps, ReactNode } from 'react'
+import { ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export function PaneHeader({
@@ -44,17 +45,40 @@ export function Frame({
   index,
   title,
   count,
+  expanded = true,
+  onToggle,
   className,
   children,
   ...props
-}: { index: number; title: string; count?: number } & ComponentProps<'section'>) {
+}: { index: number; title: string; count?: ReactNode; expanded?: boolean; onToggle?: () => void } & ComponentProps<'section'>) {
+  const label = (
+    <>
+      [{index}]─<span className="text-foreground">{title}</span>
+      {count !== undefined && <span className="ml-1.5 tabular-nums">{count}</span>}
+    </>
+  )
   return (
-    <section className={cn('relative rounded-[3px] border border-frame px-1.5 pt-3 pb-1.5', className)} {...props}>
+    <section
+      className={cn('relative rounded-[3px] border border-frame px-1.5', expanded ? 'pt-3 pb-1.5' : 'pt-2', className)}
+      {...props}
+    >
       <h2 className="absolute -top-[9px] left-2 flex items-center bg-card px-1 font-mono text-[11.5px] leading-4 text-muted-foreground">
-        [{index}]─<span className="text-foreground">{title}</span>
-        {count !== undefined && <span className="ml-1.5 tabular-nums">{count}</span>}
+        {onToggle ? (
+          <button
+            type="button"
+            aria-label={title}
+            aria-expanded={expanded}
+            onClick={onToggle}
+            className="flex items-center rounded-[3px] outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+          >
+            <ChevronRight aria-hidden className={cn('mr-0.5 size-3 transition-transform', expanded && 'rotate-90')} />
+            {label}
+          </button>
+        ) : (
+          label
+        )}
       </h2>
-      {children}
+      {expanded && children}
     </section>
   )
 }

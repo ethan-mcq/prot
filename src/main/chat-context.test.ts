@@ -28,7 +28,9 @@ function detail(overrides: Partial<PullDetail> = {}): PullDetail {
       updatedAt: '',
       bucket: 'review',
       comments: 0,
-      labels: []
+      labels: [],
+      baseRef: 'main',
+      headRef: 'retry'
     },
     body: 'Retries failed uploads.',
     base: { ref: 'main', sha: 'aaa' },

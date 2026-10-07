@@ -402,34 +402,77 @@ export const otherPull = {
   title: 'Add dark theme polish'
 }
 
-function searchItem(owner: string, repo: string, number: number, itemTitle: string, user: typeof author, updatedAt: string) {
+const kai = { login: 'kai', avatarUrl: 'https://avatars.githubusercontent.com/u/3?v=4' }
+const daysAgo = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString().replace(/\.\d+Z$/, 'Z')
+
+type InboxPull = {
+  owner: string
+  repo: string
+  number: number
+  title: string
+  author: { login: string; avatarUrl: string }
+  draft?: boolean
+  createdAt: string
+  updatedAt: string
+  base: string
+  head: string
+}
+
+function graphqlPull(p: InboxPull) {
   return {
-    repository_url: `https://api.github.com/repos/${owner}/${repo}`,
-    number,
-    title: itemTitle,
-    user,
-    html_url: `https://github.com/${owner}/${repo}/pull/${number}`,
-    draft: false,
-    created_at: '2026-10-05T17:00:00Z',
-    updated_at: updatedAt,
-    comments: 3,
-    labels: [{ name: 'mobile', color: '0e8a16' }],
-    pull_request: { url: `https://api.github.com/repos/${owner}/${repo}/pulls/${number}` }
+    __typename: 'PullRequest',
+    number: p.number,
+    title: p.title,
+    url: `https://github.com/${p.owner}/${p.repo}/pull/${p.number}`,
+    isDraft: p.draft ?? false,
+    createdAt: p.createdAt,
+    updatedAt: p.updatedAt,
+    baseRefName: p.base,
+    headRefName: p.head,
+    isCrossRepository: false,
+    repository: { nameWithOwner: `${p.owner}/${p.repo}`, defaultBranchRef: { name: 'main' } },
+    author: p.author,
+    comments: { totalCount: 3 },
+    labels: { nodes: [{ name: 'mobile', color: '0e8a16' }] }
   }
+}
+
+const me = { login: viewer.login, avatarUrl: viewer.avatar_url }
+const luffy = { login: author.login, avatarUrl: author.avatar_url }
+const prot = { owner: otherPull.owner, repo: otherPull.repo, author: me }
+
+export const inbox = {
+  secondReviewer: { owner: OWNER, repo: REPO, number: 5260, title: 'Retry thread uploads on flaky networks', author: kai },
+  draft: { ...prot, number: 14, title: 'Sketch keyboard navigation for the inbox' },
+  old: { ...prot, number: 3, title: 'Package a signed macOS build' },
+  stack: [
+    { ...prot, number: 11, title: 'Read the inbox through GraphQL' },
+    { ...prot, number: 12, title: 'Group stacked pull requests' },
+    { ...prot, number: 13, title: 'Filter the inbox' }
+  ]
+}
+
+function searchResponse(pulls: InboxPull[]) {
+  return { data: { search: { nodes: pulls.map(graphqlPull) } } }
 }
 
 export function reviewSearch(state: PullState) {
-  return {
-    total_count: 1,
-    incomplete_results: false,
-    items: [searchItem(OWNER, REPO, NUMBER, title, author, state.updatedAt)]
-  }
+  return searchResponse([
+    { owner: OWNER, repo: REPO, number: NUMBER, title, author: luffy, createdAt: '2026-10-05T17:00:00Z', updatedAt: state.updatedAt, base: 'main', head: 'luffy/share-extension' },
+    { ...inbox.secondReviewer, createdAt: daysAgo(3), updatedAt: daysAgo(2), base: 'main', head: 'kai/upload-retry' }
+  ])
 }
 
-export const mineSearch = {
-  total_count: 1,
-  incomplete_results: false,
-  items: [searchItem(otherPull.owner, otherPull.repo, otherPull.number, otherPull.title, viewer, UPDATED_AT)]
+export function mineSearch() {
+  const [a, b, c] = inbox.stack as [InboxPull, InboxPull, InboxPull]
+  return searchResponse([
+    { ...prot, number: otherPull.number, title: otherPull.title, createdAt: daysAgo(6), updatedAt: daysAgo(2.5), base: 'main', head: 'ethan/dark-theme' },
+    { ...c, createdAt: daysAgo(2), updatedAt: daysAgo(0.2), base: 'ethan/inbox-stacks', head: 'ethan/inbox-filters' },
+    { ...a, createdAt: daysAgo(4), updatedAt: daysAgo(1), base: 'main', head: 'ethan/inbox-graphql' },
+    { ...b, createdAt: daysAgo(3), updatedAt: daysAgo(1.5), base: 'ethan/inbox-graphql', head: 'ethan/inbox-stacks' },
+    { ...inbox.draft, draft: true, createdAt: daysAgo(5), updatedAt: daysAgo(0.5), base: 'main', head: 'ethan/keyboard-nav' },
+    { ...inbox.old, createdAt: daysAgo(45), updatedAt: daysAgo(40), base: 'main', head: 'ethan/signed-build' }
+  ])
 }
 
 export const viewerUser = viewer
@@ -449,8 +492,8 @@ export function pullDetail(state: PullState) {
     additions: state.files.reduce((sum, f) => sum + f.additions, 0),
     deletions: state.files.reduce((sum, f) => sum + f.deletions, 0),
     changed_files: state.files.length,
-    base: { ref: 'main', sha: BASE_SHA },
-    head: { ref: 'luffy/share-extension', sha: state.headSha }
+    base: { ref: 'main', sha: BASE_SHA, repo: { full_name: `${OWNER}/${REPO}`, default_branch: 'main' } },
+    head: { ref: 'luffy/share-extension', sha: state.headSha, repo: { full_name: `${OWNER}/${REPO}` } }
   }
 }
 

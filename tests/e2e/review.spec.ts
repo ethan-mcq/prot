@@ -1,6 +1,6 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Locator } from '@playwright/test'
 import { aiGuide, CHAT_REPLY, TEST_TOKEN } from '../fixtures/servers'
-import { pull } from '../fixtures/share-pr'
+import { inbox, otherPull, pull } from '../fixtures/share-pr'
 import { launch, type Harness } from './launch'
 
 const SHOTS = process.env.PROT_SHOTS
@@ -17,6 +17,12 @@ test.afterEach(async () => {
 
 async function shot(name: string) {
   if (SHOTS) await h.page.screenshot({ path: `${SHOTS}/${name}.png` })
+}
+
+async function settle() {
+  await h.page.evaluate(
+    'Promise.all(document.getAnimations().filter((a) => a.effect?.getComputedTiming().iterations !== Infinity).map((a) => a.finished.catch(() => {})))'
+  )
 }
 
 async function signIn() {
@@ -36,7 +42,7 @@ test('signs in, badges the dock, and walks the guide from a risk-first overview 
   await shot('01-sign-in')
   await signIn()
 
-  await expect.poll(() => app.evaluate(({ app }) => app.dock?.getBadge())).toBe('1')
+  await expect.poll(() => app.evaluate(({ app }) => app.dock?.getBadge())).toBe('2')
   await expect(page.getByRole('region', { name: 'Your pull requests' })).toContainText('Add dark theme polish')
 
   await openSharePull()
@@ -98,6 +104,88 @@ test('signs in, badges the dock, and walks the guide from a risk-first overview 
   await shot('04d-sticky-header')
 })
 
+test('the inbox puts open PRs before drafts, keeps a stack together, collapses sections, and filters without moving the dock badge', async () => {
+  const { page, app } = h
+  const card = (p: { owner: string; repo: string; number: number; title: string }) => `${p.owner}/${p.repo}#${p.number} ${p.title}`
+  const buttonNames = (scope: Locator) => scope.getByRole('button').evaluateAll((els) => els.map((el) => el.getAttribute('aria-label')))
+  const badge = () => app.evaluate(({ app }) => app.dock?.getBadge())
+  const [a, b, c] = inbox.stack as [typeof inbox.draft, typeof inbox.draft, typeof inbox.draft]
+  const mineDefault = [
+    'Your pull requests',
+    'stack · 3',
+    card(a),
+    card(b),
+    card(c),
+    card(otherPull),
+    card(inbox.old),
+    'Drafts',
+    card(inbox.draft)
+  ]
+  await signIn()
+  const review = page.getByRole('region', { name: 'Needs your review' })
+  const mine = page.getByRole('region', { name: 'Your pull requests' })
+
+  await expect.poll(() => buttonNames(mine)).toEqual(mineDefault)
+  await expect(mine.getByRole('group', { name: 'stack · 3' }).getByRole('button', { name: /^ethan-mcq\/prot#/ })).toHaveCount(3)
+  await expect(review.getByRole('button', { name: card(inbox.secondReviewer) })).toBeVisible()
+  await expect.poll(badge).toBe('2')
+  await shot('12-inbox-default')
+
+  const mineHeader = mine.getByRole('button', { name: 'Your pull requests' })
+  await mineHeader.click()
+  await expect(mineHeader).toHaveAttribute('aria-expanded', 'false')
+  await expect(mine.getByRole('button', { name: card(otherPull) })).toHaveCount(0)
+  await settle()
+  await shot('14-inbox-collapsed')
+  await mineHeader.click()
+  await expect(mine.getByRole('button', { name: card(otherPull) })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Filter pull requests' }).click()
+  await page.getByRole('checkbox', { name: 'kai' }).click()
+  await expect(review.getByRole('button', { name: card(inbox.secondReviewer) })).toHaveCount(0)
+  await expect(review.locator('h2')).toContainText('1 of 2')
+  await page.getByRole('radio', { name: '30 days' }).click()
+  await expect(mine.getByRole('button', { name: card(inbox.old) })).toHaveCount(0)
+  await page.getByRole('switch', { name: 'Show drafts' }).click()
+  await expect(mine.getByRole('button', { name: card(inbox.draft) })).toHaveCount(0)
+  await expect(mine.getByRole('button', { name: 'Drafts' })).toHaveCount(0)
+  await page.getByRole('switch', { name: 'Group stacks' }).click()
+  await expect(mine.getByRole('group', { name: 'stack · 3' })).toHaveCount(0)
+  await expect(mine.getByRole('button', { name: card(b) })).toContainText(`stacked on #${a.number}`)
+  await expect(mine.locator('h2')).toContainText('4 of 6')
+  expect(await badge()).toBe('2')
+
+  await page.keyboard.press('Escape')
+  await page.reload()
+  await expect.poll(() => buttonNames(mine)).toEqual(['Your pull requests', card(c), card(a), card(b), card(otherPull)])
+  await expect(review.getByRole('button', { name: card(inbox.secondReviewer) })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Filter pull requests' })).toContainText('4')
+
+  await page.getByRole('button', { name: 'Filter pull requests' }).click()
+  await settle()
+  await shot('13-inbox-filter')
+  await page.getByRole('checkbox', { name: '0xluffyb' }).click()
+  await page.keyboard.press('Escape')
+  await expect(review).toContainText('No pull requests match these filters')
+  await expect(review.getByRole('button', { name: 'Reset' })).toBeVisible()
+  await settle()
+  await shot('16-inbox-no-matches')
+
+  await page.getByRole('button', { name: 'Filter pull requests' }).click()
+  await page.getByRole('button', { name: 'Reset filters' }).click()
+  await page.keyboard.press('Escape')
+  await expect.poll(() => buttonNames(mine)).toEqual(mineDefault)
+  await expect(review.getByRole('button', { name: card(inbox.secondReviewer) })).toBeVisible()
+  expect(await badge()).toBe('2')
+
+  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.getByRole('radio', { name: 'Dark' }).click()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await settle()
+  await shot('15-inbox-dark')
+})
+
 test('expands into the IDE, browses the whole repo, and submits an approval with an inline comment', async () => {
   const { page, github } = h
   await signIn()
@@ -151,7 +239,7 @@ test('expands into the IDE, browses the whole repo, and submits an approval with
   await page.keyboard.press('Escape')
   await expect(ide).toBeHidden()
 
-  await page.getByRole('button', { name: 'Review' }).click()
+  await page.getByRole('button', { name: /^Review/ }).click()
   await page.getByRole('textbox', { name: 'Summary' }).fill('Looks good.')
   await page.getByRole('radio', { name: 'Approve' }).click()
   await shot('06-review')

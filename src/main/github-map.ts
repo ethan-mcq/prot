@@ -16,17 +16,27 @@ import {
 export type RawUser = { login: string; avatar_url: string } | null
 type RawLabel = { name: string; color: string }
 
-export type RawSearchItem = {
+export type RawGraphqlPull = {
+  __typename: 'PullRequest'
   number: number
   title: string
-  user: RawUser
-  html_url: string
-  draft?: boolean
-  created_at: string
-  updated_at: string
-  comments: number
-  labels: RawLabel[]
-  repository_url: string
+  url: string
+  isDraft: boolean
+  createdAt: string
+  updatedAt: string
+  baseRefName: string
+  headRefName: string
+  isCrossRepository: boolean
+  repository: { nameWithOwner: string; defaultBranchRef: { name: string } | null }
+  author: { login: string; avatarUrl: string } | null
+  comments: { totalCount: number }
+  labels: { nodes: RawLabel[] } | null
+}
+
+export type RawSearchResponse = {
+  // Search hits the token cannot see come back as null.
+  data?: { search: { nodes: (RawGraphqlPull | { __typename: 'Issue' } | null)[] } } | null
+  errors?: { message: string }[]
 }
 
 export type RawPull = {
@@ -39,8 +49,8 @@ export type RawPull = {
   updated_at: string
   comments: number
   labels: RawLabel[]
-  base: { ref: string; sha: string }
-  head: { ref: string; sha: string }
+  base: { ref: string; sha: string; repo: { full_name: string; default_branch: string } }
+  head: { ref: string; sha: string; repo: { full_name: string } | null }
   additions: number
   deletions: number
 }
@@ -80,26 +90,49 @@ export function toUser(raw: RawUser): GitHubUser {
   return { login: raw.login, avatarUrl: raw.avatar_url }
 }
 
-export function parseRepositoryUrl(url: string): { owner: string; repo: string } {
-  const match = /\/repos\/([^/]+)\/([^/]+)\/?$/.exec(url)
-  if (!match) throw new Error(`Unexpected repository_url from GitHub: ${url}`)
-  return { owner: match[1] as string, repo: match[2] as string }
+export function graphqlUrl(restBaseUrl: string): string {
+  const base = restBaseUrl.replace(/\/+$/, '')
+  if (base.endsWith('/api/v3')) return `${base.slice(0, -'/v3'.length)}/graphql`
+  return `${base}/graphql`
 }
 
-export function toPullSummary(item: RawSearchItem, bucket: PullBucket): PullSummary {
-  const { owner, repo } = parseRepositoryUrl(item.repository_url)
+function stackableHead(head: string, crossRepository: boolean, defaultBranch: string | null): string | null {
+  if (crossRepository || head === defaultBranch) return null
+  return head
+}
+
+function toPullSummary(node: RawGraphqlPull, bucket: PullBucket): PullSummary {
+  const [owner = '', repo = ''] = node.repository.nameWithOwner.split('/')
+  const author = node.author && { login: node.author.login, avatar_url: node.author.avatarUrl }
   return {
-    ref: { owner, repo, number: item.number },
-    title: item.title,
-    author: toUser(item.user),
-    url: item.html_url,
-    draft: item.draft ?? false,
-    createdAt: item.created_at,
-    updatedAt: item.updated_at,
+    ref: { owner, repo, number: node.number },
+    title: node.title,
+    author: toUser(author),
+    url: node.url,
+    draft: node.isDraft,
+    createdAt: node.createdAt,
+    updatedAt: node.updatedAt,
     bucket,
-    comments: item.comments,
-    labels: item.labels.map((label) => ({ name: label.name, color: label.color }))
+    comments: node.comments.totalCount,
+    labels: (node.labels?.nodes ?? []).map((label) => ({ name: label.name, color: label.color })),
+    baseRef: node.baseRefName,
+    headRef: stackableHead(node.headRefName, node.isCrossRepository, node.repository.defaultBranchRef?.name ?? null)
   }
+}
+
+export type SearchResult = { pulls: PullSummary[] } | { error: string }
+
+export function toSearchResult(response: RawSearchResponse, bucket: PullBucket): SearchResult {
+  // Partial data with errors (e.g. one org behind SAML) keeps the PRs we can see.
+  if (!response.data?.search) {
+    const messages = (response.errors ?? []).map((error) => error.message)
+    return { error: `GitHub GraphQL: ${messages.join('; ') || 'empty response'}` }
+  }
+  const pulls: PullSummary[] = []
+  for (const node of response.data.search.nodes) {
+    if (node?.__typename === 'PullRequest') pulls.push(toPullSummary(node, bucket))
+  }
+  return { pulls }
 }
 
 export function mergeBuckets(review: PullSummary[], mine: PullSummary[]): PullSummary[] {
@@ -185,7 +218,9 @@ export function toPullDetail(
       updatedAt: raw.updated_at,
       bucket: raw.user?.login === viewerLogin ? 'mine' : 'review',
       comments: raw.comments,
-      labels: raw.labels.map((label) => ({ name: label.name, color: label.color }))
+      labels: raw.labels.map((label) => ({ name: label.name, color: label.color })),
+      baseRef: raw.base.ref,
+      headRef: stackableHead(raw.head.ref, raw.head.repo?.full_name !== raw.base.repo.full_name, raw.base.repo.default_branch)
     },
     body: raw.body ?? '',
     base: { ref: raw.base.ref, sha: raw.base.sha },

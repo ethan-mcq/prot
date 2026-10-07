@@ -13,7 +13,9 @@ function pull(number: number, bucket: PullSummary['bucket']): PullSummary {
     updatedAt: '',
     bucket,
     comments: 0,
-    labels: []
+    labels: [],
+    baseRef: 'main',
+    headRef: `pr-${number}`
   }
 }
 

@@ -19,6 +19,10 @@ export type PullSummary = {
   bucket: PullBucket
   comments: number
   labels: { name: string; color: string }[]
+  baseRef: string
+  // Null when no PR can stack on this head: a fork's branch, or the repo's default branch,
+  // which would otherwise make a release PR (dev → main) the parent of every PR into dev.
+  headRef: string | null
 }
 
 export type FileStatus = 'added' | 'modified' | 'removed' | 'renamed'

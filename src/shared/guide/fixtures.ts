@@ -46,7 +46,9 @@ export function pullWith(files: ChangedFile[], body = ''): PullDetail {
       updatedAt: '2026-10-02T00:00:00Z',
       bucket: 'review',
       comments: 0,
-      labels: []
+      labels: [],
+      baseRef: 'main',
+      headRef: 'share-extension'
     },
     body,
     base: { ref: 'main', sha: 'base000' },

@@ -65,11 +65,11 @@ export async function startGitHub(): Promise<GitHubFixture> {
 
     const p = url.pathname
     if (p === '/user') return json(res, 200, pr.viewerUser)
-    if (p === '/search/issues') {
-      const q = url.searchParams.get('q') ?? ''
+    if (p === '/graphql' && req.method === 'POST') {
+      const q = (body as { variables?: { q?: string } }).variables?.q ?? ''
       if (q.includes('review-requested:@me')) return json(res, 200, pr.reviewSearch(state))
-      if (q.includes('author:@me')) return json(res, 200, pr.mineSearch)
-      return json(res, 200, { total_count: 0, items: [] })
+      if (q.includes('author:@me')) return json(res, 200, pr.mineSearch())
+      return json(res, 200, { errors: [{ message: `fixture has no search for ${q}` }] })
     }
     if (p === `${prPath}/pulls/${pr.pull.number}`) return json(res, 200, pr.pullDetail(state))
     if (p === `${prPath}/pulls/${pr.pull.number}/files`) {
