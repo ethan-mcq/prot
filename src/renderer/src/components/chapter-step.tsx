@@ -43,7 +43,7 @@ export function ChapterStep({ index }: { index: number }) {
           }
         />
         <div className="scroll-quiet min-h-0 flex-1 space-y-5 overflow-y-auto px-4 pt-2 pb-5 font-mono text-[12.5px] leading-[1.7]">
-          <h2 className="font-display text-[40px] break-words">{chapter.title}</h2>
+          <h2 className="text-[16px] font-semibold text-foreground break-words">{chapter.title}</h2>
           <label className="flex w-fit cursor-pointer items-center gap-2 rounded-[6px] border border-pane-border px-2 py-1 text-[12px] transition-colors hover:bg-accent has-[[data-state=checked]]:border-added/40 has-[[data-state=checked]]:text-added">
             <Checkbox
               checked={reviewed}
@@ -55,8 +55,8 @@ export function ChapterStep({ index }: { index: number }) {
           <Markdown className="font-copy text-[13px] leading-[1.75] text-foreground/85">{chapter.summary}</Markdown>
           {files.length > 0 && (
             <section className="space-y-1.5">
-              <h3 className="font-bold">
-                ## Files <span className="font-normal text-muted-foreground">{files.length}</span>
+              <h3 className="font-semibold">
+                Files <span className="font-normal text-muted-foreground">{files.length}</span>
               </h3>
               <FileTree
                 files={files}

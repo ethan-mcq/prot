@@ -22,7 +22,7 @@ export function FlowStep() {
       <div className="scroll-quiet min-h-0 flex-1 overflow-y-auto px-5 pt-2 pb-6 font-mono text-[12.5px] leading-[1.7]">
         <div className="max-w-[1100px] space-y-6">
           <div className="space-y-2">
-            <h2 className="font-display text-[44px]">Flow</h2>
+            <h2 className="text-[16px] font-semibold text-foreground">Flow</h2>
             {flow.caption && <p className="max-w-[720px] font-copy text-[13px] leading-[1.75] text-foreground/85">{flow.caption}</p>}
           </div>
           {flow.nodes.length > 0 ? (
@@ -220,8 +220,8 @@ export function ChapterList() {
   const { detail, session, dispatch } = useReview()
   return (
     <section className="space-y-2">
-      <h3 className="font-bold">
-        ## Chapters <span className="font-normal text-muted-foreground">{session.guide.chapters.length}</span>
+      <h3 className="font-semibold">
+        Chapters <span className="font-normal text-muted-foreground">{session.guide.chapters.length}</span>
       </h3>
       <ol>
         {session.guide.chapters.map((chapter, index) => {

@@ -195,7 +195,7 @@ export function DiffView({ file }: { file: ChangedFile }) {
       })}
       {comments.outdated.length > 0 && (
         <div className="border-t border-pane-border">
-          <p className="px-4 pt-3 text-muted-foreground">## Outdated comments</p>
+          <p className="px-4 pt-3 text-muted-foreground">Outdated comments</p>
           <CommentThread comments={comments.outdated} />
         </div>
       )}

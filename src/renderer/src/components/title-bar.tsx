@@ -23,7 +23,7 @@ export function TitleBar({
       <div className="flex shrink-0 items-center gap-2">
         <Logo className="size-[22px]" />
         <div className="leading-none">
-          <p className="text-[13px] font-bold tracking-tight">prot</p>
+          <p className="text-[13px] font-semibold tracking-tight">prot</p>
           {login && <p className="mt-[3px] text-[10.5px] text-tab-foreground">{login}</p>}
         </div>
       </div>

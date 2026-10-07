@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, renameSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
@@ -11,5 +11,5 @@ const dir = join(homedir(), 'Applications')
 const target = join(dir, 'prot.app')
 mkdirSync(dir, { recursive: true })
 rmSync(target, { recursive: true, force: true })
-cpSync(source, target, { recursive: true, verbatimSymlinks: true })
+renameSync(source, target)
 console.log(`installed ${target}`)

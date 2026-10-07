@@ -73,7 +73,7 @@ export function ReviewDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-2">
-          <Label htmlFor="review-summary" className="font-mono text-[12px] font-bold">
+          <Label htmlFor="review-summary" className="font-mono text-[12px] font-semibold">
             Summary
           </Label>
           <Textarea
@@ -111,8 +111,8 @@ export function ReviewDialog({
           })}
         </RadioGroupPrimitive.Root>
         <div className="space-y-2">
-          <p className="font-mono text-[12px] font-bold">
-            ## Pending comments <span className="font-normal text-muted-foreground">{drafts.length}</span>
+          <p className="font-mono text-[12px] font-semibold">
+            Pending comments <span className="font-normal text-muted-foreground">{drafts.length}</span>
           </p>
           {drafts.length === 0 ? (
             <p className="font-mono text-[12px] text-muted-foreground">Hover a line in any diff and press + to add one.</p>

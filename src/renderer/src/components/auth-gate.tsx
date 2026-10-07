@@ -42,7 +42,7 @@ export function AuthGate({ error, onAuth }: { error: string | null; onAuth: (sta
         <div className="pane w-full max-w-[400px] overflow-hidden">
           <PaneHeader icon={<Logo className="size-4" />} title="prot" detail="sign in" />
           <div className="px-7 pt-5 pb-7">
-            <h1 className="font-display text-[52px]">Guided reviews</h1>
+            <h1 className="font-mono text-[16px] font-semibold">Guided reviews</h1>
             <p className="mt-2 font-copy text-[12.5px] leading-[1.7] text-muted-foreground">
               Walk your GitHub pull requests as an overview, a flow and chapters.
             </p>

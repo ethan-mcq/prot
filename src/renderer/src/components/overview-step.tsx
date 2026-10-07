@@ -34,9 +34,9 @@ export function OverviewStep() {
         <PaneHeader icon={<ScrollText />} title="Overview" detail={`${ref.repo}#${ref.number}`} />
         <div className="scroll-quiet min-h-0 flex-1 overflow-y-auto px-5 pt-2 pb-6 font-mono text-[12.5px] leading-[1.7]">
           <div className="max-w-[720px] space-y-6">
-            <h2 className="font-display text-[44px] text-foreground">Overview</h2>
+            <h2 className="text-[16px] font-semibold text-foreground">Overview</h2>
             <section className="space-y-2">
-              <h3 className="font-bold">## Summary</h3>
+              <h3 className="font-semibold">Summary</h3>
               <Markdown className="font-copy text-[13px] leading-[1.75] text-foreground/85">{overview.summary}</Markdown>
             </section>
             {overview.points.length > 0 && (
@@ -56,7 +56,7 @@ export function OverviewStep() {
               </ul>
             )}
             <section className="space-y-2">
-              <h3 className="font-bold">## Description</h3>
+              <h3 className="font-semibold">Description</h3>
               {detail.body.trim() ? (
                 <Markdown className="font-copy text-[13px] leading-[1.75] text-foreground/85">{detail.body}</Markdown>
               ) : (
@@ -102,7 +102,7 @@ function ConversationComment() {
 
   return (
     <section className="space-y-2">
-      <h3 className="font-bold">## Conversation</h3>
+      <h3 className="font-semibold">Conversation</h3>
       <Textarea
         aria-label="Comment on the pull request"
         placeholder="Add a comment to the conversation"

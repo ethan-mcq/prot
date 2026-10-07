@@ -114,9 +114,9 @@ export function ChatWidget() {
         aria-label="Ask prot"
         title="Ask prot"
         onClick={() => setChatOpen(true)}
-        className="fixed right-6 bottom-6 z-40 size-[52px] rounded-full shadow-[0_6px_20px_rgb(0_0_0/0.18)] ring-1 ring-black/5 transition-transform hover:scale-105 active:scale-95 dark:ring-white/15"
+        className="fixed right-6 bottom-6 z-40 grid size-[52px] place-items-center rounded-full bg-card p-1.5 shadow-[0_6px_20px_rgb(0_0_0/0.18)] ring-1 ring-black/5 transition-transform hover:scale-105 active:scale-95 dark:ring-white/15"
       >
-        <Logo tile={false} className="size-full" />
+        <Logo className="size-full" />
       </button>
     )
   }
@@ -333,7 +333,7 @@ function KeySetup({ onDone }: { onDone: () => void }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-4 pt-2 pb-4">
       <div className="space-y-1.5 font-mono text-[12.5px] leading-[1.7]">
-        <p className="font-bold">## {keys.anthropic ? 'Chat settings' : 'Connect Claude'}</p>
+        <p className="font-semibold">{keys.anthropic ? 'Chat settings' : 'Connect Claude'}</p>
         <p className="font-copy text-[12.5px] text-muted-foreground">
           Ask prot and the AI guide use your own Anthropic API key.
           {keys.anthropic && ' A key is saved. Enter a new one to replace it.'}

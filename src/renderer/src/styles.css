@@ -2,7 +2,6 @@
 @import 'tw-animate-css';
 @import '@fontsource-variable/inter';
 @import '@fontsource-variable/geist-mono';
-@import '@fontsource/bebas-neue/400.css';
 @import '@fontsource/dm-mono/400.css';
 
 @custom-variant dark (&:is(.dark *));
@@ -103,7 +102,6 @@
 @theme inline {
   --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'Geist Mono Variable', ui-monospace, monospace;
-  --font-display: 'Bebas Neue', 'Inter Variable', sans-serif;
   --font-copy: 'DM Mono', 'Geist Mono Variable', ui-monospace, monospace;
   --font-weight-normal: 450;
   --font-weight-medium: 500;
@@ -195,10 +193,6 @@
   }
   .font-copy {
     letter-spacing: 0.03em;
-  }
-  .font-display {
-    letter-spacing: 0.01em;
-    line-height: 0.95;
   }
   .tok {
     color: var(--shiki-light);
