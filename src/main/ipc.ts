@@ -1,0 +1,82 @@
+import { ipcMain, shell } from 'electron'
+import { IPC } from '@shared/ipc'
+import type { AuthService } from './auth'
+import type { ChatService } from './chat'
+import type { GuideService } from './guide-ai'
+import type { InboxPoller } from './poller'
+import type { PullService } from './pulls'
+import type { SecretsStore } from './secrets'
+import type { SettingsStore } from './settings'
+import { parseSettingsPatch } from './settings-validate'
+import {
+  parseAnthropicKey,
+  parseChatRequest,
+  parseHttpsUrl,
+  parsePullRef,
+  parseReviewInput,
+  parseSha,
+  parseToken
+} from './validate'
+
+export type Services = {
+  auth: AuthService
+  poller: InboxPoller
+  pulls: PullService
+  guide: GuideService
+  chat: ChatService
+  settings: SettingsStore
+  secrets: SecretsStore
+}
+
+export function registerIpc(services: Services): void {
+  const { auth, poller, pulls, guide, chat, settings, secrets } = services
+
+  ipcMain.handle(IPC.authGet, () => auth.get())
+  ipcMain.handle(IPC.authGh, () => auth.signInWithGh())
+  ipcMain.handle(IPC.authToken, (_event, token: unknown) => auth.signInWithToken(parseToken(token)))
+  ipcMain.handle(IPC.authSignOut, () => auth.signOut())
+
+  ipcMain.handle(IPC.inboxGet, () => poller.get())
+  ipcMain.handle(IPC.inboxRefresh, () => poller.refresh())
+
+  ipcMain.handle(IPC.pullGet, (_event, ref: unknown) => pulls.fetch(parsePullRef(ref)))
+  ipcMain.handle(IPC.pullFile, (_event, ref: unknown, path: unknown, sha: unknown) => {
+    if (typeof path !== 'string' || path === '') throw new Error('path must be a non-empty string')
+    return pulls.getFile(parsePullRef(ref), path, parseSha(sha))
+  })
+  ipcMain.handle(IPC.pullTree, (_event, ref: unknown, sha: unknown) =>
+    pulls.getTree(parsePullRef(ref), parseSha(sha))
+  )
+  ipcMain.handle(IPC.pullReview, (_event, ref: unknown, input: unknown) =>
+    pulls.submitReview(parsePullRef(ref), parseReviewInput(input))
+  )
+  ipcMain.handle(IPC.pullComment, (_event, ref: unknown, body: unknown) => {
+    if (typeof body !== 'string' || body.trim() === '') throw new Error('Comment must not be empty')
+    return pulls.comment(parsePullRef(ref), body)
+  })
+
+  ipcMain.handle(IPC.guideAi, (_event, ref: unknown, refresh: unknown) =>
+    guide.get(parsePullRef(ref), refresh === true)
+  )
+
+  ipcMain.handle(IPC.aiChat, (_event, req: unknown) => {
+    chat.start(parseChatRequest(req))
+  })
+  ipcMain.handle(IPC.aiCancel, (_event, id: unknown) => {
+    if (typeof id !== 'string') throw new Error('id must be a string')
+    chat.cancel(id)
+  })
+
+  ipcMain.handle(IPC.settingsGet, () => settings.get())
+  ipcMain.handle(IPC.settingsSet, (_event, patch: unknown) =>
+    settings.set(parseSettingsPatch(patch))
+  )
+
+  ipcMain.handle(IPC.keysGet, async () => ({ anthropic: await secrets.hasAnthropicKey() }))
+  ipcMain.handle(IPC.keysSetAnthropic, async (_event, key: unknown) => {
+    await secrets.update({ anthropicKey: parseAnthropicKey(key) })
+    return { anthropic: await secrets.hasAnthropicKey() }
+  })
+
+  ipcMain.handle(IPC.openExternal, (_event, url: unknown) => shell.openExternal(parseHttpsUrl(url)))
+}
