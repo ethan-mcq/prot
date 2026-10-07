@@ -6,7 +6,9 @@ export function pullKey(ref: PullRef): string {
 
 export type GitHubUser = { login: string; avatarUrl: string }
 
-export type PullBucket = 'review' | 'mine'
+export type PullBucket = 'review' | 'mine' | 'manual'
+
+export type PullState = 'open' | 'closed' | 'merged'
 
 export type PullSummary = {
   ref: PullRef
@@ -17,6 +19,7 @@ export type PullSummary = {
   createdAt: string
   updatedAt: string
   bucket: PullBucket
+  state: PullState
   comments: number
   labels: { name: string; color: string }[]
   baseRef: string

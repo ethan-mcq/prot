@@ -27,6 +27,7 @@ function detail(overrides: Partial<PullDetail> = {}): PullDetail {
       createdAt: '',
       updatedAt: '',
       bucket: 'review',
+      state: 'open',
       comments: 0,
       labels: [],
       baseRef: 'main',

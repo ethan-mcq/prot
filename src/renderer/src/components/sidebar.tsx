@@ -1,23 +1,28 @@
 import { useMemo } from 'react'
-import { ChevronRight, GitBranch, GitPullRequest, RefreshCw } from 'lucide-react'
-import type { GitHubUser, InboxState, PullBucket, PullSummary } from '@shared/types'
+import { ChevronRight, GitBranch, GitPullRequest, RefreshCw, X } from 'lucide-react'
+import { toast } from 'sonner'
+import type { GitHubUser, InboxState, PullBucket, PullRef } from '@shared/types'
 import { pullKey } from '@shared/types'
 import { buildInboxView, DEFAULT_FILTERS, inboxAuthors, type InboxEntry, type InboxGroup, type InboxUnit } from '@shared/inbox'
+import type { RepoRef } from '@shared/pull-input'
 import { Skeleton } from '@/components/ui/skeleton'
+import { CheckoutInput } from '@/components/checkout-input'
 import { Frame, PaneButton, PaneHeader } from '@/components/pane'
 import { InboxFilter } from '@/components/inbox-filter'
 import { SettingsMenu } from '@/components/settings-menu'
 import { UserAvatar } from '@/components/user-avatar'
 import { useCollapsed, useInboxFilters } from '@/lib/inbox-prefs'
 import { relativeTime } from '@/lib/paths'
-import { cn } from '@/lib/utils'
+import { cn, errorMessage } from '@/lib/utils'
 
-const SECTIONS: { bucket: PullBucket; title: string; empty: string }[] = [
-  { bucket: 'review', title: 'Needs your review', empty: 'Nothing is waiting on you.' },
-  { bucket: 'mine', title: 'Your pull requests', empty: 'You have no open pull requests.' }
+// A section with no empty message is hidden while it has nothing in it.
+const SECTIONS: { bucket: PullBucket; title: string; empty: string | null; removable: boolean }[] = [
+  { bucket: 'review', title: 'Needs your review', empty: 'Nothing is waiting on you.', removable: false },
+  { bucket: 'mine', title: 'Your pull requests', empty: 'You have no open pull requests.', removable: false },
+  { bucket: 'manual', title: 'Manually checked out', empty: null, removable: true }
 ]
 
-type RowProps = { selected: string | null; onSelect: (pull: PullSummary) => void }
+type RowProps = { selected: string | null; onSelect: (ref: PullRef) => void; onRemove: ((ref: PullRef) => void) | null }
 type Collapse = ReturnType<typeof useCollapsed>
 
 export function Sidebar({
@@ -26,6 +31,7 @@ export function Sidebar({
   onRefresh,
   selected,
   onSelect,
+  fallbackRepo,
   user,
   onSignOut
 }: {
@@ -33,7 +39,8 @@ export function Sidebar({
   refreshing: boolean
   onRefresh: () => void
   selected: string | null
-  onSelect: (pull: PullSummary) => void
+  onSelect: (ref: PullRef) => void
+  fallbackRepo: RepoRef | null
   user: GitHubUser
   onSignOut: () => void
 }) {
@@ -43,6 +50,11 @@ export function Sidebar({
   const view = useMemo(() => buildInboxView(pulls ?? [], filters, Date.now()), [pulls, filters])
   const authors = useMemo(() => inboxAuthors(pulls ?? []), [pulls])
   const loading = !inbox?.fetchedAt && !inbox?.error
+  const remove = (ref: PullRef) => {
+    window.prot.inbox.forget(ref).catch((error: unknown) => {
+      toast.error(`Could not remove ${pullKey(ref)}`, { description: errorMessage(error) })
+    })
+  }
 
   return (
     <aside className="pane flex w-[288px] shrink-0 flex-col">
@@ -58,6 +70,7 @@ export function Sidebar({
           </>
         }
       />
+      <CheckoutInput fallback={fallbackRepo} onOpen={onSelect} />
       <div className="scroll-quiet min-h-0 flex-1 space-y-5 overflow-y-auto px-2.5 pt-3 pb-3">
         {inbox?.error && (
           <div role="alert" className="rounded-[6px] border border-destructive/30 bg-destructive/5 p-2.5 font-mono text-[11.5px]">
@@ -71,6 +84,8 @@ export function Sidebar({
         {SECTIONS.map((section, i) => {
           const { groups, shown, total } = view[section.bucket]
           const key = `section:${section.bucket}`
+          if (section.empty === null && total === 0) return null
+          const row = { selected, onSelect, onRemove: section.removable ? remove : null }
           return (
             <Frame
               key={section.bucket}
@@ -96,9 +111,7 @@ export function Sidebar({
                   </button>
                 </div>
               ) : (
-                groups.map((group) => (
-                  <PullGroup key={group.key} group={group} collapse={collapse} selected={selected} onSelect={onSelect} />
-                ))
+                groups.map((group) => <PullGroup key={group.key} group={group} collapse={collapse} {...row} />)
               )}
             </Frame>
           )
@@ -182,14 +195,14 @@ function Stack({ unit, collapse, ...row }: { unit: InboxUnit; collapse: Collapse
   )
 }
 
-function PullRow({ entry, selected, onSelect }: { entry: InboxEntry } & RowProps) {
+function PullRow({ entry, selected, onSelect, onRemove }: { entry: InboxEntry } & RowProps) {
   const { pull, stackedOn } = entry
   const key = pullKey(pull.ref)
   const isSelected = selected === key
-  return (
+  const row = (
     <button
       type="button"
-      onClick={() => onSelect(pull)}
+      onClick={() => onSelect(pull.ref)}
       aria-label={`${key} ${pull.title}`}
       aria-current={isSelected ? 'page' : undefined}
       className={cn(
@@ -197,7 +210,7 @@ function PullRow({ entry, selected, onSelect }: { entry: InboxEntry } & RowProps
         isSelected ? 'bg-selection' : 'hover:bg-accent'
       )}
     >
-      <div className="flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
+      <div className={cn('flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground', onRemove && 'pr-5')}>
         <span className={cn('shrink-0', isSelected ? 'text-foreground' : 'text-transparent')} aria-hidden>
           ›
         </span>
@@ -205,6 +218,7 @@ function PullRow({ entry, selected, onSelect }: { entry: InboxEntry } & RowProps
           {pull.ref.owner}/{pull.ref.repo}#{pull.ref.number}
         </span>
         {pull.draft && <span className="shrink-0 text-modified">draft</span>}
+        {pull.state !== 'open' && <span className="shrink-0 rounded-[3px] border border-frame px-1 leading-[14px]">{pull.state}</span>}
         {pull.labels.slice(0, 3).map((label) => (
           <span
             key={label.name}
@@ -225,5 +239,20 @@ function PullRow({ entry, selected, onSelect }: { entry: InboxEntry } & RowProps
         <p className="mt-0.5 pl-3 font-mono text-[10.5px] text-muted-foreground/80">↳ stacked on #{stackedOn}</p>
       )}
     </button>
+  )
+  if (!onRemove) return row
+  return (
+    <div className="group/row relative">
+      {row}
+      <button
+        type="button"
+        aria-label={`Remove ${key} from manually checked out`}
+        title="Remove from manually checked out"
+        onClick={() => onRemove(pull.ref)}
+        className="absolute top-1 right-1 flex size-5 items-center justify-center rounded-[4px] text-muted-foreground opacity-0 transition-opacity outline-none group-hover/row:opacity-100 hover:bg-background hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 [&_svg]:size-3"
+      >
+        <X aria-hidden />
+      </button>
+    </div>
   )
 }

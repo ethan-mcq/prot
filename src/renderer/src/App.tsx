@@ -3,6 +3,7 @@ import { Inbox } from 'lucide-react'
 import { toast } from 'sonner'
 import type { AuthState, GitHubUser, InboxState, PullRef } from '@shared/types'
 import { pullKey } from '@shared/types'
+import { fallbackRepo } from '@shared/pull-input'
 import { Toaster } from '@/components/ui/sonner'
 import { AuthGate } from '@/components/auth-gate'
 import { ChatWidget } from '@/components/chat-widget'
@@ -90,7 +91,8 @@ function Shell({ user, onSignOut }: { user: GitHubUser; onSignOut: () => void })
               refreshing={refreshing}
               onRefresh={() => void refresh()}
               selected={selected ? pullKey(selected) : null}
-              onSelect={(pull) => setSelected(pull.ref)}
+              onSelect={setSelected}
+              fallbackRepo={fallbackRepo(selected, inbox?.pulls ?? [])}
               user={user}
               onSignOut={onSignOut}
             />

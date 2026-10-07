@@ -425,6 +425,7 @@ function graphqlPull(p: InboxPull) {
     title: p.title,
     url: `https://github.com/${p.owner}/${p.repo}/pull/${p.number}`,
     isDraft: p.draft ?? false,
+    state: 'OPEN',
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
     baseRefName: p.base,
@@ -480,6 +481,8 @@ export const viewerUser = viewer
 export function pullDetail(state: PullState) {
   return {
     number: NUMBER,
+    state: 'open',
+    merged_at: null,
     title,
     body,
     user: author,

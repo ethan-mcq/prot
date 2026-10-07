@@ -11,11 +11,14 @@ import {
   graphqlUrl,
   mergeBuckets,
   toPullDetail,
+  toPullsResult,
+  toRestSummary,
   toReviewComment,
   toSearchResult,
   toUser,
   type RawFile,
   type RawPull,
+  type RawPullsResponse,
   type RawReview,
   type RawReviewComment,
   type RawSearchResponse,
@@ -24,34 +27,47 @@ import {
 
 const MAX_FILE_PAGES = 30
 const REQUEST_TIMEOUT_MS = 30_000
+// Keeps each aliased query well under GitHub's per-query node and complexity limits.
+const PULLS_PER_QUERY = 30
 
-const SEARCH_QUERIES: Record<PullBucket, string> = {
+const SEARCH_QUERIES: Record<'review' | 'mine', string> = {
   review: 'is:pr is:open archived:false review-requested:@me sort:updated-desc',
   mine: 'is:pr is:open archived:false author:@me sort:updated-desc'
 }
 
+const PULL_FIELDS = `fragment PullFields on PullRequest {
+  number
+  title
+  url
+  isDraft
+  state
+  createdAt
+  updatedAt
+  baseRefName
+  headRefName
+  isCrossRepository
+  repository { nameWithOwner defaultBranchRef { name } }
+  author { login avatarUrl }
+  comments { totalCount }
+  labels(first: 10) { nodes { name color } }
+}`
+
 const INBOX_QUERY = `query Inbox($q: String!) {
   search(query: $q, type: ISSUE, first: 50) {
-    nodes {
-      __typename
-      ... on PullRequest {
-        number
-        title
-        url
-        isDraft
-        createdAt
-        updatedAt
-        baseRefName
-        headRefName
-        isCrossRepository
-        repository { nameWithOwner defaultBranchRef { name } }
-        author { login avatarUrl }
-        comments { totalCount }
-        labels(first: 10) { nodes { name color } }
-      }
-    }
+    nodes { __typename ...PullFields }
   }
-}`
+}
+${PULL_FIELDS}`
+
+function pullsQuery(count: number): string {
+  const params: string[] = []
+  const fields: string[] = []
+  for (let i = 0; i < count; i++) {
+    params.push(`$o${i}: String!, $r${i}: String!, $n${i}: Int!`)
+    fields.push(`p${i}: repository(owner: $o${i}, name: $r${i}) { pullRequest(number: $n${i}) { ...PullFields } }`)
+  }
+  return `query Pulls(${params.join(', ')}) {\n  ${fields.join('\n  ')}\n}\n${PULL_FIELDS}`
+}
 
 export class GitHubError extends Error {
   constructor(
@@ -114,6 +130,32 @@ export class GitHubClient {
     return toPullDetail(ref, viewerLogin, raw, files, comments, reviews)
   }
 
+  async getPullSummary(ref: PullRef, bucket: PullBucket): Promise<PullSummary> {
+    return toRestSummary(await this.json<RawPull>(`${repoPath(ref)}/pulls/${ref.number}`), bucket)
+  }
+
+  // Keyed by pullKey of the requested ref; see toPullsResult for what null and absent mean.
+  async getPulls(refs: PullRef[], bucket: PullBucket): Promise<Map<string, PullSummary | null>> {
+    const pulls = new Map<string, PullSummary | null>()
+    for (let start = 0; start < refs.length; start += PULLS_PER_QUERY) {
+      const chunk = refs.slice(start, start + PULLS_PER_QUERY)
+      const variables: Record<string, string | number> = {}
+      for (const [i, ref] of chunk.entries()) {
+        variables[`o${i}`] = ref.owner
+        variables[`r${i}`] = ref.repo
+        variables[`n${i}`] = ref.number
+      }
+      const raw = await this.json<RawPullsResponse>(new URL(graphqlUrl(this.baseUrl)), {
+        method: 'POST',
+        body: { query: pullsQuery(chunk.length), variables }
+      })
+      const result = toPullsResult(raw, chunk, bucket)
+      if ('error' in result) throw new GitHubError(200, result.error)
+      for (const [key, pull] of result.pulls) pulls.set(key, pull)
+    }
+    return pulls
+  }
+
   async getHeadSha(ref: PullRef): Promise<string> {
     const raw = await this.json<RawPull>(`${repoPath(ref)}/pulls/${ref.number}`)
     return raw.head.sha
@@ -170,7 +212,7 @@ export class GitHubClient {
     return toReviewComment(raw)
   }
 
-  private async search(bucket: PullBucket): Promise<PullSummary[]> {
+  private async search(bucket: 'review' | 'mine'): Promise<PullSummary[]> {
     const raw = await this.json<RawSearchResponse>(new URL(graphqlUrl(this.baseUrl)), {
       method: 'POST',
       body: { query: INBOX_QUERY, variables: { q: SEARCH_QUERIES[bucket] } }

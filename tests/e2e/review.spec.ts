@@ -1,6 +1,9 @@
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { expect, test, type Locator } from '@playwright/test'
 import { aiGuide, CHAT_REPLY, TEST_TOKEN } from '../fixtures/servers'
 import { inbox, otherPull, pull } from '../fixtures/share-pr'
+import { toolsPulls } from '../fixtures/tools-pr'
 import { launch, type Harness } from './launch'
 
 const SHOTS = process.env.PROT_SHOTS
@@ -239,6 +242,15 @@ test('expands into the IDE, browses the whole repo, and submits an approval with
   await page.keyboard.press('Escape')
   await expect(ide).toBeHidden()
 
+  await page.getByRole('button', { name: 'Ask prot' }).click()
+  await page.getByLabel('Anthropic API key').fill('sk-ant-fixture')
+  await page.getByRole('button', { name: 'Save' }).click()
+  await page.getByRole('button', { name: 'Close chat' }).click()
+  const aiChapter = page.getByRole('tab', { name: /Stage and upload shared files/ })
+  await expect(aiChapter).toBeVisible()
+  const guideFile = join(h.userData, 'guides', `${pull.owner}__${pull.repo}__${pull.number}.json`)
+  await expect.poll(() => existsSync(guideFile)).toBe(true)
+
   await page.getByRole('button', { name: /^Review/ }).click()
   await page.getByRole('textbox', { name: 'Summary' }).fill('Looks good.')
   await page.getByRole('radio', { name: 'Approve' }).click()
@@ -253,6 +265,69 @@ test('expands into the IDE, browses the whole repo, and submits an approval with
       event: 'APPROVE',
       comments: [{ path: 'packages/mobile/src/share/send.ts', line: 6, side: 'RIGHT', body: 'Parallel would be faster here.' }]
     })
+  await expect.poll(() => existsSync(guideFile)).toBe(false)
+  await expect(aiChapter).toBeVisible()
+})
+
+test('checks out PRs outside the inbox by link, keeps them across a reload, opens inbox PRs in place, and removes them', async () => {
+  const { page, userData } = h
+  const [open, merged] = toolsPulls as [(typeof toolsPulls)[number], (typeof toolsPulls)[number]]
+  const card = (p: { number: number; title: string }) => `octo-labs/tools#${p.number} ${p.title}`
+  const input = page.getByRole('textbox', { name: 'Check out a pull request' })
+  const manual = page.getByRole('region', { name: 'Manually checked out' })
+  const saved = () =>
+    (JSON.parse(readFileSync(join(userData, 'checked-out.json'), 'utf8')) as { owner: string; repo: string; number: number }[]).map(
+      (entry) => `${entry.owner}/${entry.repo}#${entry.number}`
+    )
+  const checkout = async (text: string) => {
+    await input.fill(text)
+    await input.press('Enter')
+  }
+  await signIn()
+  await expect(manual).toHaveCount(0)
+
+  await checkout('https://github.com/octo-labs/tools/pull/42/files')
+  await expect(page.getByRole('heading', { name: open.title })).toBeVisible()
+  await expect(manual.getByRole('button', { name: card(open) })).toHaveAttribute('aria-current', 'page')
+  await expect(input).toHaveValue('')
+  await checkout('octo-labs/tools#40')
+  await expect(page.getByRole('heading', { name: merged.title })).toBeVisible()
+  await expect(manual.getByRole('button', { name: card(merged) })).toContainText('merged')
+  await manual.scrollIntoViewIfNeeded()
+  await manual.getByRole('button', { name: card(open) }).hover()
+  await settle()
+  await shot('17-manual-section')
+
+  await page.reload()
+  await expect.poll(() => manual.getByRole('button', { name: /^octo-labs\/tools#/ }).evaluateAll((els) => els.map((el) => el.getAttribute('aria-label')))).toEqual([
+    card(open),
+    card(merged)
+  ])
+  expect(saved()).toEqual(['octo-labs/tools#42', 'octo-labs/tools#40'])
+
+  const capyCards = page.getByRole('button', { name: `${pull.owner}/${pull.repo}#${pull.number} ${pull.title}` })
+  await checkout(`${pull.owner}/${pull.repo}#${pull.number}`)
+  await expect(page.getByRole('heading', { name: pull.title })).toBeVisible()
+  await checkout(`#${pull.number}`)
+  await expect(input).toHaveValue('')
+  await expect(page.getByRole('heading', { name: pull.title })).toBeVisible()
+  await expect(capyCards).toHaveCount(1)
+  await expect(capyCards).toHaveAttribute('aria-current', 'page')
+  expect(saved()).toEqual(['octo-labs/tools#42', 'octo-labs/tools#40'])
+
+  await checkout('https://github.com/octo-labs/tools/issues/42')
+  await expect(page.getByRole('alert')).toHaveText("That's an issue link, not a pull request")
+  await settle()
+  await shot('18-checkout-error')
+  await checkout('octo-labs/tools#999')
+  await expect(page.getByRole('alert')).toHaveText("No pull request octo-labs/tools#999, or you don't have access")
+
+  for (const p of [open, merged]) {
+    await manual.getByRole('button', { name: card(p) }).hover()
+    await page.getByRole('button', { name: `Remove octo-labs/tools#${p.number} from manually checked out` }).click()
+  }
+  await expect(manual).toHaveCount(0)
+  expect(saved()).toEqual([])
 })
 
 test('chat widget takes an API key, swaps in the AI guide, and answers with the on-screen chapter and chosen effort', async () => {

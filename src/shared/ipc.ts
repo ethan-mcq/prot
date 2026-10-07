@@ -23,6 +23,9 @@ export interface ProtApi {
   inbox: {
     get(): Promise<InboxState>
     refresh(): Promise<InboxState>
+    // Resolves the ref to open: the inbox's own copy when the PR is already listed, else the newly checked-out PR.
+    checkout(ref: PullRef): Promise<PullRef>
+    forget(ref: PullRef): Promise<void>
     onChange(cb: (state: InboxState) => void): () => void
   }
   pulls: {
@@ -67,6 +70,8 @@ export const IPC = {
   authSignOut: 'auth:sign-out',
   inboxGet: 'inbox:get',
   inboxRefresh: 'inbox:refresh',
+  inboxCheckout: 'inbox:checkout',
+  inboxForget: 'inbox:forget',
   inboxChanged: 'inbox:changed',
   pullGet: 'pull:get',
   pullFile: 'pull:file',

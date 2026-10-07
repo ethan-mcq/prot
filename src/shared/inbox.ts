@@ -30,12 +30,30 @@ export type InboxSection = { groups: InboxGroup[]; shown: number; total: number 
 
 export type InboxView = Record<PullBucket, InboxSection>
 
+// Top to bottom. A PR in more than one bucket shows only in the first.
+const SECTION_ORDER: readonly PullBucket[] = ['review', 'mine', 'manual']
+
 export function buildInboxView(pulls: PullSummary[], filters: InboxFilters, now: number): InboxView {
-  const parents = stackParents(pulls)
+  const unique = firstPerPull(pulls)
+  const parents = stackParents(unique)
   return {
-    review: buildSection('review', pulls, parents, filters, now),
-    mine: buildSection('mine', pulls, parents, filters, now)
+    review: buildSection('review', unique, parents, filters, now),
+    mine: buildSection('mine', unique, parents, filters, now),
+    manual: buildSection('manual', unique, parents, filters, now)
   }
+}
+
+function firstPerPull(pulls: PullSummary[]): PullSummary[] {
+  const seen = new Set<string>()
+  const unique: PullSummary[] = []
+  for (const bucket of SECTION_ORDER) {
+    for (const pull of pulls) {
+      if (pull.bucket !== bucket || seen.has(pullKey(pull.ref))) continue
+      seen.add(pullKey(pull.ref))
+      unique.push(pull)
+    }
+  }
+  return unique
 }
 
 function branchKey(pull: PullSummary, branch: string): string {

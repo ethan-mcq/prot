@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import type { PullSummary } from '@shared/types'
-import { graphqlUrl, mergeBuckets, toChangedFile, toSearchResult, type RawGraphqlPull, type RawSearchResponse } from './github-map'
+import {
+  graphqlUrl,
+  mergeBuckets,
+  toChangedFile,
+  toPullsResult,
+  toRestSummary,
+  toSearchResult,
+  type RawGraphqlPull,
+  type RawPull,
+  type RawPullsResponse,
+  type RawSearchResponse
+} from './github-map'
 
 const node: RawGraphqlPull = {
   __typename: 'PullRequest',
@@ -8,6 +19,7 @@ const node: RawGraphqlPull = {
   title: 'Add retry to uploader',
   url: 'https://github.com/acme/widgets/pull/42',
   isDraft: true,
+  state: 'OPEN',
   createdAt: '2026-10-01T10:00:00Z',
   updatedAt: '2026-10-02T11:30:00Z',
   baseRefName: 'main',
@@ -47,6 +59,7 @@ describe('toSearchResult', () => {
           createdAt: '2026-10-01T10:00:00Z',
           updatedAt: '2026-10-02T11:30:00Z',
           bucket: 'review',
+          state: 'open',
           comments: 3,
           labels: [{ name: 'bug', color: 'd73a4a' }],
           baseRef: 'main',
@@ -85,6 +98,67 @@ describe('toSearchResult', () => {
   ])('%s', (_name, response, expected) => {
     const result = toSearchResult(response, 'review')
     expect('pulls' in result ? result.pulls.map((pull) => pull.ref.number) : result).toEqual(expected)
+  })
+})
+
+describe('toPullsResult', () => {
+  const refs = [
+    { owner: 'acme', repo: 'widgets', number: 42 },
+    { owner: 'acme', repo: 'widgets', number: 404 },
+    { owner: 'acme', repo: 'gone', number: 1 },
+    { owner: 'sso-org', repo: 'private', number: 9 }
+  ]
+
+  it('maps found pulls to summaries, NOT_FOUND to null, and leaves pulls it cannot see out', () => {
+    const response: RawPullsResponse = {
+      data: { p0: { pullRequest: { ...node, state: 'MERGED' } }, p1: { pullRequest: null }, p2: null, p3: null },
+      errors: [
+        { message: 'Could not resolve to a PullRequest', type: 'NOT_FOUND', path: ['p1', 'pullRequest'] },
+        { message: 'Could not resolve to a Repository', type: 'NOT_FOUND', path: ['p2'] },
+        { message: 'Resource protected by SAML', type: 'FORBIDDEN', path: ['p3'] }
+      ]
+    }
+    const result = toPullsResult(response, refs, 'manual')
+    const states: Record<string, string | null> = {}
+    if ('pulls' in result) {
+      for (const [key, pull] of result.pulls) states[key] = pull && `${pull.bucket} ${pull.state}`
+    }
+    expect(states).toEqual({ 'acme/widgets#42': 'manual merged', 'acme/widgets#404': null, 'acme/gone#1': null })
+  })
+
+  it('fails when GitHub sends no data', () => {
+    expect(toPullsResult({ data: null, errors: [{ message: 'rate limited' }] }, refs, 'manual')).toEqual({
+      error: 'GitHub GraphQL: rate limited'
+    })
+  })
+})
+
+describe('toRestSummary', () => {
+  const raw: RawPull = {
+    number: 42,
+    state: 'closed',
+    merged_at: null,
+    title: 'Retry uploads',
+    body: null,
+    user: { login: 'ada', avatar_url: '' },
+    html_url: 'https://github.com/Acme/Widgets/pull/42',
+    created_at: '2026-10-01T10:00:00Z',
+    updated_at: '2026-10-02T11:30:00Z',
+    comments: 0,
+    labels: [],
+    base: { ref: 'main', sha: 'a', repo: { full_name: 'Acme/Widgets', default_branch: 'main' } },
+    head: { ref: 'ada/retry', sha: 'b', repo: { full_name: 'Acme/Widgets' } },
+    additions: 1,
+    deletions: 0
+  }
+
+  it.each<[string, Partial<RawPull>, string]>([
+    ['an open pull', { state: 'open' }, 'Acme/Widgets#42 open ada/retry'],
+    ['a closed pull', {}, 'Acme/Widgets#42 closed ada/retry'],
+    ['a merged pull', { merged_at: '2026-10-03T00:00:00Z' }, 'Acme/Widgets#42 merged ada/retry']
+  ])('takes the canonical repo name and state of %s', (_name, patch, expected) => {
+    const pull = toRestSummary({ ...raw, ...patch }, 'manual')
+    expect(`${pull.ref.owner}/${pull.ref.repo}#${pull.ref.number} ${pull.state} ${pull.headRef}`).toBe(expected)
   })
 })
 

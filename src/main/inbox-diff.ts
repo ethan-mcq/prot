@@ -13,3 +13,15 @@ export function newReviewRequests(previous: PullSummary[], next: PullSummary[]):
   }
   return fresh
 }
+
+export function newlyClosed(previous: PullSummary[], next: PullSummary[]): PullSummary[] {
+  const wasOpen = new Set<string>()
+  for (const pull of previous) {
+    if (pull.state === 'open') wasOpen.add(pullKey(pull.ref))
+  }
+  const closed: PullSummary[] = []
+  for (const pull of next) {
+    if (pull.state !== 'open' && wasOpen.has(pullKey(pull.ref))) closed.push(pull)
+  }
+  return closed
+}

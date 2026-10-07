@@ -18,6 +18,8 @@ const api: ProtApi = {
   inbox: {
     get: () => ipcRenderer.invoke(IPC.inboxGet),
     refresh: () => ipcRenderer.invoke(IPC.inboxRefresh),
+    checkout: (ref) => ipcRenderer.invoke(IPC.inboxCheckout, ref),
+    forget: (ref) => ipcRenderer.invoke(IPC.inboxForget, ref),
     onChange: (cb) => subscribe<InboxState>(IPC.inboxChanged, cb)
   },
   pulls: {

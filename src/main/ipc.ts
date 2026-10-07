@@ -47,6 +47,8 @@ export function registerIpc(services: Services): void {
 
   ipcMain.handle(IPC.inboxGet, () => poller.get())
   ipcMain.handle(IPC.inboxRefresh, () => poller.refresh())
+  ipcMain.handle(IPC.inboxCheckout, (_event, ref: unknown) => poller.checkout(parsePullRef(ref)))
+  ipcMain.handle(IPC.inboxForget, (_event, ref: unknown) => poller.forget(parsePullRef(ref)))
 
   ipcMain.handle(IPC.pullGet, (_event, ref: unknown) => pulls.fetch(parsePullRef(ref)))
   ipcMain.handle(IPC.pullFile, (_event, ref: unknown, path: unknown, sha: unknown) => {
@@ -56,9 +58,12 @@ export function registerIpc(services: Services): void {
   ipcMain.handle(IPC.pullTree, (_event, ref: unknown, sha: unknown) =>
     pulls.getTree(parsePullRef(ref), parseSha(sha))
   )
-  ipcMain.handle(IPC.pullReview, (_event, ref: unknown, input: unknown) =>
-    pulls.submitReview(parsePullRef(ref), parseReviewInput(input))
-  )
+  ipcMain.handle(IPC.pullReview, async (_event, rawRef: unknown, rawInput: unknown) => {
+    const ref = parsePullRef(rawRef)
+    const input = parseReviewInput(rawInput)
+    await pulls.submitReview(ref, input)
+    await guide.reviewed(ref, input.event)
+  })
   ipcMain.handle(IPC.pullComment, (_event, ref: unknown, body: unknown) => {
     if (typeof body !== 'string' || body.trim() === '') throw new Error('Comment must not be empty')
     return pulls.comment(parsePullRef(ref), body)

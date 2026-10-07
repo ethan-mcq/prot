@@ -67,6 +67,8 @@ export function parsePullRef(raw: unknown): PullRef {
   const repo = str(value.repo, 'repo')
   const number = int(value.number, 'number')
   if (!PATH_SAFE.test(owner) || !PATH_SAFE.test(repo)) throw new Error('Invalid owner or repo name')
+  // `.` and `..` would resolve away when joined into a REST path.
+  if (/^\.+$/.test(owner) || /^\.+$/.test(repo)) throw new Error('Invalid owner or repo name')
   if (number < 1) throw new Error('Pull request number must be positive')
   return { owner, repo, number }
 }

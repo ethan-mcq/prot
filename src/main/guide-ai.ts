@@ -1,7 +1,7 @@
 import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { livePrompt } from '@shared/prompts'
-import { pullKey, type Guide, type PullDetail, type PullRef } from '@shared/types'
+import { pullKey, type Guide, type PullDetail, type PullRef, type PullState, type ReviewEvent } from '@shared/types'
 import { GUIDE_SCHEMA, buildGuidePrompt, buildStoryGuide, parseAiGuide } from '@shared/guide'
 import { createClient, describeAiError, modelParams, refusalMessage } from './claude'
 import type { CodeIndexService } from './code-index/service'
@@ -15,6 +15,19 @@ const GUIDE_MAX_TOKENS = 32_000
 function cacheFileName(ref: PullRef): string {
   return `${ref.owner}__${ref.repo}__${ref.number}.json`
 }
+
+// Owners cannot contain underscores but repos can, so the repo is whatever sits between the first and last `__`.
+function cachedRef(name: string): PullRef | null {
+  const match = /^([^_]+)__(.+)__(\d+)\.json$/.exec(name)
+  if (!match) return null
+  return { owner: match[1] as string, repo: match[2] as string, number: Number(match[3]) }
+}
+
+// Approving or requesting changes finishes a review; a comment does not.
+const FINISHES_REVIEW: Record<ReviewEvent, boolean> = { APPROVE: true, REQUEST_CHANGES: true, COMMENT: false }
+
+// Null means GitHub says the pull is gone. A pull left out of the map could not be checked and keeps its guide.
+export type PullStateLookup = (refs: PullRef[]) => Promise<Map<string, PullState | null>>
 
 type CachedGuide = Omit<Extract<Guide, { source: 'ai' }>, 'questions' | 'promptHash'> & { questions?: unknown; promptHash?: unknown }
 
@@ -36,6 +49,8 @@ function isCachedGuide(value: unknown): value is CachedGuide {
 
 export class GuideService {
   private readonly inFlight = new Map<string, Promise<Guide>>()
+  // Bumped by forget, so a guide still generating when its PR was reviewed is not written back.
+  private readonly generations = new Map<string, number>()
 
   constructor(
     private readonly secrets: SecretsStore,
@@ -55,19 +70,58 @@ export class GuideService {
     return next
   }
 
+  async reviewed(ref: PullRef, event: ReviewEvent): Promise<void> {
+    if (FINISHES_REVIEW[event]) await this.forget(ref)
+  }
+
+  async forget(ref: PullRef): Promise<void> {
+    const key = pullKey(ref)
+    this.generations.set(key, this.generation(ref) + 1)
+    this.inFlight.delete(`${key}:true`)
+    this.inFlight.delete(`${key}:false`)
+    await rm(join(this.cacheDir, cacheFileName(ref)), { force: true })
+  }
+
+  // Deletes guides whose PR is merged, closed or gone. A lookup that throws deletes nothing.
+  async sweep(lookup: PullStateLookup): Promise<void> {
+    let names: string[]
+    try {
+      names = await readdir(this.cacheDir)
+    } catch {
+      return
+    }
+    const refs: PullRef[] = []
+    for (const name of names) {
+      const ref = cachedRef(name)
+      if (ref) refs.push(ref)
+    }
+    if (refs.length === 0) return
+    const states = await lookup(refs)
+    for (const ref of refs) {
+      const state = states.get(pullKey(ref))
+      if (state === undefined || state === 'open') continue
+      await this.forget(ref)
+    }
+  }
+
+  private generation(ref: PullRef): number {
+    return this.generations.get(pullKey(ref)) ?? 0
+  }
+
   private async load(ref: PullRef, refresh: boolean): Promise<Guide> {
     const file = join(this.cacheDir, cacheFileName(ref))
+    const generation = this.generation(ref)
     if (!refresh) {
       const cached = await this.readCache(file)
       if (cached && Array.isArray(cached.questions) && typeof cached.promptHash === 'string') return cached as Guide
       if (cached) {
         const upgraded = await this.backfill(ref, cached)
-        await this.writeCache(ref, file, upgraded)
+        if (this.generation(ref) === generation) await this.writeCache(ref, file, upgraded)
         return upgraded
       }
     }
     const guide = await this.generate(ref, await this.pulls.cached(ref))
-    await this.writeCache(ref, file, guide)
+    if (this.generation(ref) === generation) await this.writeCache(ref, file, guide)
     return guide
   }
 

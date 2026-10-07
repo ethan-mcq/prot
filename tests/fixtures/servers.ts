@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import * as pr from './share-pr'
+import * as tools from './tools-pr'
 
 export const TEST_TOKEN = 'ghp_fixture_token'
 
@@ -66,10 +67,29 @@ export async function startGitHub(): Promise<GitHubFixture> {
     const p = url.pathname
     if (p === '/user') return json(res, 200, pr.viewerUser)
     if (p === '/graphql' && req.method === 'POST') {
-      const q = (body as { variables?: { q?: string } }).variables?.q ?? ''
+      const { query, variables } = body as { query: string; variables: Record<string, string | number> }
+      if (query.startsWith('query Pulls(')) return json(res, 200, pullsByAlias(variables, state))
+      const q = String(variables.q ?? '')
       if (q.includes('review-requested:@me')) return json(res, 200, pr.reviewSearch(state))
       if (q.includes('author:@me')) return json(res, 200, pr.mineSearch())
       return json(res, 200, { errors: [{ message: `fixture has no search for ${q}` }] })
+    }
+    const toolsRoute = p.match(new RegExp(`^${tools.toolsPath}/pulls/(\\d+)(/files|/comments|/reviews)?$`))
+    if (toolsRoute) {
+      const pull = tools.toolsPull(Number(toolsRoute[1]))
+      if (pull === null) return json(res, 404, { message: 'Not Found' })
+      if (toolsRoute[2] === '/files') return json(res, 200, url.searchParams.get('page') === '1' ? tools.toolsFiles : [])
+      if (toolsRoute[2]) return json(res, 200, [])
+      return json(res, 200, tools.toolsDetail(pull))
+    }
+    if (p.startsWith(`${tools.toolsPath}/contents/`)) {
+      const content = tools.toolsContent(decodeURIComponent(p.slice(`${tools.toolsPath}/contents/`.length)), url.searchParams.get('ref'))
+      if (content === null) return json(res, 404, { message: 'Not Found' })
+      res.writeHead(200, { 'content-type': 'text/plain' })
+      return res.end(content)
+    }
+    if (p.startsWith(`${tools.toolsPath}/git/trees/`)) {
+      return json(res, 200, { truncated: false, tree: tools.toolsTree().map((path) => ({ path, type: 'blob' })) })
     }
     if (p === `${prPath}/pulls/${pr.pull.number}`) return json(res, 200, pr.pullDetail(state))
     if (p === `${prPath}/pulls/${pr.pull.number}/files`) {
@@ -116,6 +136,25 @@ export async function startGitHub(): Promise<GitHubFixture> {
       state = pr.pushedState
     }
   }
+}
+
+type GraphqlNode = { number: number; repository: { nameWithOwner: string } }
+
+// Answers the aliased `query Pulls` the way GitHub does: a NOT_FOUND error per alias it cannot resolve.
+function pullsByAlias(variables: Record<string, string | number>, state: pr.PullState) {
+  const known = new Map<string, GraphqlNode>()
+  const nodes: GraphqlNode[] = [...pr.reviewSearch(state).data.search.nodes, ...pr.mineSearch().data.search.nodes]
+  for (const pull of tools.toolsPulls) nodes.push(tools.toolsNode(pull))
+  for (const node of nodes) known.set(`${node.repository.nameWithOwner}#${node.number}`, node)
+
+  const data: Record<string, { pullRequest: GraphqlNode } | null> = {}
+  const errors: { type: string; path: string[]; message: string }[] = []
+  for (let i = 0; `o${i}` in variables; i++) {
+    const node = known.get(`${variables[`o${i}`]}/${variables[`r${i}`]}#${variables[`n${i}`]}`)
+    data[`p${i}`] = node ? { pullRequest: node } : null
+    if (!node) errors.push({ type: 'NOT_FOUND', path: [`p${i}`], message: 'Could not resolve to a Repository' })
+  }
+  return errors.length > 0 ? { data, errors } : { data }
 }
 
 export const CHAT_REPLY = 'The share flow starts when onNewIntent hands the intent to takeShare.'

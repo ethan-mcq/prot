@@ -7,6 +7,7 @@ import {
   type PullBucket,
   type PullDetail,
   type PullRef,
+  type PullState,
   type PullSummary,
   type Review,
   type ReviewComment,
@@ -22,6 +23,7 @@ export type RawGraphqlPull = {
   title: string
   url: string
   isDraft: boolean
+  state: 'OPEN' | 'CLOSED' | 'MERGED'
   createdAt: string
   updatedAt: string
   baseRefName: string
@@ -39,7 +41,16 @@ export type RawSearchResponse = {
   errors?: { message: string }[]
 }
 
+// Aliases p0..pN, one per requested pull. A missing repo nulls the alias, a missing pull nulls pullRequest.
+export type RawPullsResponse = {
+  data?: Record<string, { pullRequest: RawGraphqlPull | null } | null> | null
+  errors?: { message: string; type?: string; path?: (string | number)[] }[]
+}
+
 export type RawPull = {
+  number: number
+  state: 'open' | 'closed'
+  merged_at: string | null
   title: string
   body: string | null
   user: RawUser
@@ -101,6 +112,8 @@ function stackableHead(head: string, crossRepository: boolean, defaultBranch: st
   return head
 }
 
+const GRAPHQL_STATES: Record<RawGraphqlPull['state'], PullState> = { OPEN: 'open', CLOSED: 'closed', MERGED: 'merged' }
+
 function toPullSummary(node: RawGraphqlPull, bucket: PullBucket): PullSummary {
   const [owner = '', repo = ''] = node.repository.nameWithOwner.split('/')
   const author = node.author && { login: node.author.login, avatar_url: node.author.avatarUrl }
@@ -113,6 +126,7 @@ function toPullSummary(node: RawGraphqlPull, bucket: PullBucket): PullSummary {
     createdAt: node.createdAt,
     updatedAt: node.updatedAt,
     bucket,
+    state: GRAPHQL_STATES[node.state],
     comments: node.comments.totalCount,
     labels: (node.labels?.nodes ?? []).map((label) => ({ name: label.name, color: label.color })),
     baseRef: node.baseRefName,
@@ -131,6 +145,29 @@ export function toSearchResult(response: RawSearchResponse, bucket: PullBucket):
   const pulls: PullSummary[] = []
   for (const node of response.data.search.nodes) {
     if (node?.__typename === 'PullRequest') pulls.push(toPullSummary(node, bucket))
+  }
+  return { pulls }
+}
+
+export type PullsResult = { pulls: Map<string, PullSummary | null> } | { error: string }
+
+// Null marks a pull GitHub says does not exist. A pull left out of the map is unknown (e.g. FORBIDDEN behind SAML),
+// so callers must not treat it as gone.
+export function toPullsResult(response: RawPullsResponse, refs: PullRef[], bucket: PullBucket): PullsResult {
+  if (!response.data) {
+    const messages = (response.errors ?? []).map((error) => error.message)
+    return { error: `GitHub GraphQL: ${messages.join('; ') || 'empty response'}` }
+  }
+  const notFound = new Set<unknown>()
+  for (const error of response.errors ?? []) {
+    if (error.type === 'NOT_FOUND') notFound.add(error.path?.[0])
+  }
+  const pulls = new Map<string, PullSummary | null>()
+  for (const [i, ref] of refs.entries()) {
+    const alias = `p${i}`
+    const node = response.data[alias]?.pullRequest
+    if (node) pulls.set(pullKey(ref), toPullSummary(node, bucket))
+    else if (notFound.has(alias)) pulls.set(pullKey(ref), null)
   }
   return { pulls }
 }
@@ -199,6 +236,30 @@ export function toReview(raw: RawReview): Review {
   }
 }
 
+function restState(raw: RawPull): PullState {
+  if (raw.merged_at !== null) return 'merged'
+  return raw.state
+}
+
+export function toRestSummary(raw: RawPull, bucket: PullBucket): PullSummary {
+  const [owner = '', repo = ''] = raw.base.repo.full_name.split('/')
+  return {
+    ref: { owner, repo, number: raw.number },
+    title: raw.title,
+    author: toUser(raw.user),
+    url: raw.html_url,
+    draft: raw.draft ?? false,
+    createdAt: raw.created_at,
+    updatedAt: raw.updated_at,
+    bucket,
+    state: restState(raw),
+    comments: raw.comments,
+    labels: raw.labels.map((label) => ({ name: label.name, color: label.color })),
+    baseRef: raw.base.ref,
+    headRef: stackableHead(raw.head.ref, raw.head.repo?.full_name !== raw.base.repo.full_name, raw.base.repo.default_branch)
+  }
+}
+
 export function toPullDetail(
   ref: PullRef,
   viewerLogin: string,
@@ -208,20 +269,7 @@ export function toPullDetail(
   reviews: RawReview[]
 ): PullDetail {
   return {
-    summary: {
-      ref,
-      title: raw.title,
-      author: toUser(raw.user),
-      url: raw.html_url,
-      draft: raw.draft ?? false,
-      createdAt: raw.created_at,
-      updatedAt: raw.updated_at,
-      bucket: raw.user?.login === viewerLogin ? 'mine' : 'review',
-      comments: raw.comments,
-      labels: raw.labels.map((label) => ({ name: label.name, color: label.color })),
-      baseRef: raw.base.ref,
-      headRef: stackableHead(raw.head.ref, raw.head.repo?.full_name !== raw.base.repo.full_name, raw.base.repo.default_branch)
-    },
+    summary: { ...toRestSummary(raw, raw.user?.login === viewerLogin ? 'mine' : 'review'), ref },
     body: raw.body ?? '',
     base: { ref: raw.base.ref, sha: raw.base.sha },
     head: { ref: raw.head.ref, sha: raw.head.sha },

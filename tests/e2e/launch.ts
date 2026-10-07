@@ -9,6 +9,7 @@ export type Harness = {
   page: Page
   github: GitHubFixture
   anthropic: FixtureServer
+  userData: string
   close(): Promise<void>
 }
 
@@ -35,6 +36,7 @@ export async function launch(): Promise<Harness> {
     page,
     github,
     anthropic,
+    userData,
     async close() {
       await app.close()
       await github.close()
