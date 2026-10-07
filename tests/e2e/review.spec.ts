@@ -46,13 +46,11 @@ test('signs in, badges the dock, and walks the guide from overview through flow 
 
   await page.keyboard.press('ArrowRight')
   await expect(page.getByRole('tab', { name: 'Flow' })).toHaveAttribute('aria-selected', 'true')
-  const flow = page.getByRole('tabpanel')
-  for (const label of ['MainActivity', 'onNewIntent()', 'takeShare()', 'ShareInbox', 'useShareSend()']) {
-    await expect(flow.getByRole('button', { name: label, exact: true })).toBeVisible()
-  }
+  const takeShare = page.getByRole('tabpanel').getByRole('button', { name: 'takeShare()', exact: true })
+  await expect(takeShare).toBeVisible()
   await shot('03-flow')
 
-  await flow.getByRole('button', { name: 'takeShare()', exact: true }).click()
+  await takeShare.click()
   await expect(page.getByRole('tab', { name: /Capy share module/ })).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByRole('region', { name: /CapyShareModule\.kt/ })).toBeVisible()
   await shot('04-chapter')

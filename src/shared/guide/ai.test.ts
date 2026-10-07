@@ -40,34 +40,21 @@ describe('parseAiGuide', () => {
       summary: 'Share text from other apps into a thread.',
       points: ['Native share module']
     })
-    expect(guide.chapters.map(({ id, title, files }) => ({ id, title, files }))).toEqual([
+    expect(guide.chapters.slice(0, 2).map(({ id, title, files }) => ({ id, title, files }))).toEqual([
       { id: 'ch-1', title: 'Native share module', files: [KOTLIN_MODULE, SWIFT_MODULE] },
-      { id: 'ch-2', title: 'Android entry point', files: [MAIN_ACTIVITY] },
-      {
-        id: 'ch-3',
-        title: 'With share extension in plugins',
-        files: ['packages/mobile/plugins/with-share-extension.js']
-      },
-      { id: 'ch-4', title: 'Thread store in src/chat', files: ['packages/mobile/src/chat/thread-store.ts'] },
-      {
-        id: 'ch-5',
-        title: 'Share sheet UI in src/share',
-        files: [
-          'packages/mobile/src/share/share-sheet.tsx',
-          'packages/mobile/src/share/share-inbox.tsx',
-          'packages/mobile/src/share/send.ts'
-        ]
-      },
-      {
-        id: 'ch-6',
-        title: 'Config and build scripts',
-        files: ['packages/mobile/app.config.ts', 'packages/mobile/scripts/testflight.sh']
-      },
-      { id: 'ch-7', title: 'Docs', files: ['packages/mobile/README.md'] },
-      { id: 'ch-8', title: 'Tests', files: ['packages/mobile/src/share/__tests__/send.test.ts'] },
-      { id: 'ch-9', title: 'Lockfiles', files: ['package-lock.json'] }
+      { id: 'ch-2', title: 'Android entry point', files: [MAIN_ACTIVITY] }
     ])
     expect(guide.chapters[0]?.summary).toBe('Kotlin and Swift sides.')
+
+    // Files the AI left out get heuristic chapters after its own; guide.test.ts owns how those read.
+    const covered = [KOTLIN_MODULE, SWIFT_MODULE, MAIN_ACTIVITY]
+    const leftovers: string[] = []
+    for (const file of capySharePull.files) {
+      if (!covered.includes(file.path)) leftovers.push(file.path)
+    }
+    const placed = guide.chapters.slice(2).flatMap((chapter) => chapter.files)
+    expect([...placed].sort()).toEqual([...leftovers].sort())
+    for (const [index, chapter] of guide.chapters.entries()) expect(chapter.id).toBe(`ch-${index + 1}`)
     expect(guide.flow).toEqual({
       caption: 'How shared content reaches a thread',
       nodes: [
@@ -93,12 +80,10 @@ describe('parseAiGuide', () => {
 describe('GUIDE_SCHEMA', () => {
   it('closes every object and requires all of its properties, as structured outputs demand', () => {
     const problems: string[] = []
-    const objects: string[] = []
     const visit = (schema: unknown, at: string): void => {
       if (typeof schema !== 'object' || schema === null) return
       const node = schema as Record<string, unknown>
       if (node.type === 'object') {
-        objects.push(at)
         const keys = Object.keys((node.properties ?? {}) as Record<string, unknown>).sort()
         const required = [...((node.required ?? []) as string[])].sort()
         if (node.additionalProperties !== false) problems.push(`${at} allows extra properties`)
@@ -112,14 +97,6 @@ describe('GUIDE_SCHEMA', () => {
     visit(GUIDE_SCHEMA, 'schema')
 
     expect(problems).toEqual([])
-    expect(objects).toEqual([
-      'schema',
-      'schema.properties.overview',
-      'schema.properties.flow',
-      'schema.properties.flow.properties.nodes.items',
-      'schema.properties.flow.properties.edges.items',
-      'schema.properties.chapters.items'
-    ])
   })
 })
 

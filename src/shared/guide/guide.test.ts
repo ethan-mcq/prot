@@ -110,27 +110,22 @@ describe('buildHeuristicGuide', () => {
   })
 
   it('summarizes the PR body without template noise, or describes the diff when the body is empty', () => {
-    expect(buildHeuristicGuide(capySharePull).overview).toEqual({
-      summary:
-        'Adds a share extension so people can share text from any app straight into a Capy thread. Android delivers the share through MainActivity, iOS through an app group.',
-      points: [
-        'Capy share module in modules/capy-share (2 files)',
-        'With share extension in plugins (1 file)',
-        'Main activity in android (1 file)',
-        'Share sheet UI in src/share (4 files)',
-        'Config and build scripts (2 files)',
-        'Docs (1 file)',
-        'Tests (1 file)',
-        'Lockfiles (1 file)'
-      ]
-    })
+    const { overview } = buildHeuristicGuide(capySharePull)
+    expect(overview.summary).toBe(
+      'Adds a share extension so people can share text from any app straight into a Capy thread. Android delivers the share through MainActivity, iOS through an app group.'
+    )
+    // One point per chapter, in chapter order; the titles themselves are pinned above.
+    expect(overview.points).toHaveLength(8)
+    expect(overview.points[0]).toBe('Capy share module in modules/capy-share (2 files)')
+    expect(overview.points[7]).toBe('Lockfiles (1 file)')
 
     const bare = pullWith([added('src/share/send.ts', ['export const a = 1', 'export const b = 2'])])
     expect(buildHeuristicGuide(bare).overview.summary).toBe('Changes 1 file (+2 -0), mostly in src/share.')
   })
 
   it('traces how the new symbols call each other, main path first', () => {
-    const { flow } = buildHeuristicGuide(capySharePull)
+    const guide = buildHeuristicGuide(capySharePull)
+    const { flow } = guide
 
     expect(flow.caption).toBe('How the new code connects, starting from ShareInbox')
     expect(flow.nodes.map(({ label, change, chapterId }) => ({ label, change, chapterId }))).toEqual([
@@ -143,7 +138,7 @@ describe('buildHeuristicGuide', () => {
       { label: 'onNewIntent()', change: 'added', chapterId: 'ch-3' },
       { label: 'takeShare()', change: 'added', chapterId: 'ch-1' }
     ])
-    expect(edgeLabels(buildHeuristicGuide(capySharePull))).toEqual([
+    expect(edgeLabels(guide)).toEqual([
       'ShareInbox -> takeShare()',
       'ShareInbox -> ShareSheet',
       'ShareSheet -> useShareSend()',
