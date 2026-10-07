@@ -1,31 +1,54 @@
 # prot
 
-Guided pull request reviews on your Mac. prot lists the PRs waiting on you, badges the Dock with the count, and walks each PR as Overview, Flow, then chapters ordered core change first and tests, schema, lockfiles last.
+Guided pull request reviews on your Mac. prot lists the PRs waiting on you, badges the Dock with the count, and walks each PR as a story: where the change enters, the code it calls, the data it uses, and the tests that cover it.
 
-## Run
+## Install
+
+You need macOS, [Node.js](https://nodejs.org) 22 or newer, and git. The [GitHub CLI](https://cli.github.com) is optional and makes sign-in one click.
+
+```bash
+git clone https://github.com/ethan-mcq/prot.git
+```
+
+```bash
+cd prot
+```
 
 ```bash
 npm install
+```
+
+```bash
 npm run install-app
 ```
 
-This builds `prot.app` and copies it to `~/Applications`. Drag it to the Dock to keep it there.
+This builds `prot.app` and moves it to `~/Applications`. Open it from there and drag it to the Dock to keep it.
 
-For development, run `npm run dev`.
+To update later, pull and install again:
 
-## Sign in
+```bash
+git pull && npm install && npm run install-app
+```
 
-Use "Continue with GitHub CLI" (reads `gh auth token`) or paste a personal access token with `repo` scope. Tokens and API keys are encrypted with the macOS keychain via Electron `safeStorage`.
+## First run
 
-## AI
+1. **Sign in.** Click "Continue with GitHub CLI" if you use `gh`, or paste a personal access token with `repo` scope.
+2. **Add an Anthropic key (optional).** Click the cat button at the bottom right and paste a key. It turns on the AI guide and chat. Without a key you still get the code-derived guide.
 
-Open the 👀 button at the bottom right and add an Anthropic API key. That enables the chat, which sees the PR, step, chapter, open file, visible lines and selected text. It also enables the AI guide, which replaces the instant heuristic guide and is cached per head commit.
+Tokens and keys are encrypted with the macOS keychain and never leave your machine except to GitHub and Anthropic.
 
-## Tests
+## Develop
+
+```bash
+npm run dev
+```
 
 ```bash
 npm test
+```
+
+```bash
 npm run test:e2e
 ```
 
-E2E drives the real Electron app against fixture GitHub and Anthropic servers in `tests/fixtures`. `GITHUB_API_URL` points prot at GitHub Enterprise or a fixture server.
+E2E drives the real app, with its window hidden, against fixture GitHub and Anthropic servers in `tests/fixtures`. Set `PROT_HEADED=1` to watch it. `GITHUB_API_URL` points prot at GitHub Enterprise or a fixture server. The review model is described in `docs/storyline.md`.
