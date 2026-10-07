@@ -22,7 +22,7 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 function boot(): void {
-  if (!app.isPackaged) app.dock?.setIcon(join(app.getAppPath(), 'resources/icon.png'))
+  if (!app.isPackaged) app.dock?.setIcon(join(import.meta.dirname, '../../resources/icon.png'))
 
   const githubApiUrl = process.env.GITHUB_API_URL ?? 'https://api.github.com'
   const settings = new SettingsStore()
