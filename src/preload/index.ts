@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import { IPC, type ProtApi } from '@shared/ipc'
+import type { AgentChange, AgentUsageChange } from '@shared/agents'
 import type { ChatEvent, InboxState, PullRef } from '@shared/types'
 
 function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
@@ -56,6 +57,23 @@ const api: ProtApi = {
   keys: {
     get: () => ipcRenderer.invoke(IPC.keysGet),
     setAnthropic: (key) => ipcRenderer.invoke(IPC.keysSetAnthropic, key)
+  },
+  agents: {
+    state: () => ipcRenderer.invoke(IPC.agentsState),
+    refresh: () => ipcRenderer.invoke(IPC.agentsRefresh),
+    start: (input) => ipcRenderer.invoke(IPC.agentsStart, input),
+    get: (id) => ipcRenderer.invoke(IPC.agentsGet, id),
+    send: (id, prompt) => ipcRenderer.invoke(IPC.agentsSend, id, prompt),
+    stop: (id) => ipcRenderer.invoke(IPC.agentsStop, id),
+    markRead: (id) => ipcRenderer.invoke(IPC.agentsMarkRead, id),
+    archive: (id) => ipcRenderer.invoke(IPC.agentsArchive, id),
+    removeWorktree: (id) => ipcRenderer.invoke(IPC.agentsRemoveWorktree, id),
+    changes: (id) => ipcRenderer.invoke(IPC.agentsChanges, id),
+    diff: (id, path) => ipcRenderer.invoke(IPC.agentsDiff, id, path),
+    addRepo: () => ipcRenderer.invoke(IPC.agentsAddRepo),
+    open: (id, target) => ipcRenderer.invoke(IPC.agentsOpen, id, target),
+    onChange: (cb) => subscribe<AgentChange>(IPC.agentsChanged, cb),
+    onUsage: (cb) => subscribe<AgentUsageChange>(IPC.agentsUsage, cb)
   },
   openExternal: (url) => ipcRenderer.invoke(IPC.openExternal, url),
   copyLink: (url) => ipcRenderer.invoke(IPC.copyLink, url)

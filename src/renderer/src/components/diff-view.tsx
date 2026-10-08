@@ -21,7 +21,7 @@ type Row =
   | { kind: 'gap'; gap: Gap }
   | { kind: 'hunk'; key: string; header: string; after: string | null }
 
-function buildRows(hunks: DiffHunk[], trailingGap: boolean): { rows: Row[]; oldSide: string[]; newSide: string[] } {
+export function buildRows(hunks: DiffHunk[], trailingGap: boolean): { rows: Row[]; oldSide: string[]; newSide: string[] } {
   const rows: Row[] = []
   const oldSide: string[] = []
   const newSide: string[] = []
@@ -272,7 +272,7 @@ const ROW_TONE = {
   context: { row: '', gutter: '', marker: 'text-muted-foreground', sign: ' ' }
 } as const
 
-function LineRow({
+export function LineRow({
   ref,
   focused = false,
   marked = false,

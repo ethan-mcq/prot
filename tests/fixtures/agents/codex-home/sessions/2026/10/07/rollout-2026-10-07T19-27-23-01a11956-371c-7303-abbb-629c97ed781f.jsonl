@@ -1,0 +1,2 @@
+{"timestamp":"2026-10-08T02:27:23.038Z","type":"session_meta","payload":{"id":"01a11956-371c-7303-abbb-629c97ed781f","timestamp":"2026-10-08T02:27:23.038Z","cwd":"/tmp/repo","source":{"subagent":{"other":"guardian"}},"thread_source":"guardian_review"}}
+{"timestamp":"2026-10-08T02:27:24.000Z","type":"event_msg","payload":{"type":"item_completed","item":{"type":"UserMessage","id":"g1","content":[{"type":"text","text":"Assess the planned action"}]}}}

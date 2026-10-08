@@ -1,0 +1,660 @@
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import {
+  Archive,
+  ArrowUp,
+  Brain,
+  Check,
+  ChevronRight,
+  Code,
+  FolderOpen,
+  LoaderCircle,
+  PanelRight,
+  Square,
+  SquareTerminal,
+  X
+} from 'lucide-react'
+import { toast } from 'sonner'
+import type { AgentDetail, AgentEvent, AgentFileChange, AgentOpenTarget, AgentPr, AgentSummary, ProviderInfo } from '@shared/agents'
+import { PROVIDER_NAMES } from '@shared/agents'
+import { parsePatch } from '@shared/diff'
+import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
+import { DiffStat } from '@/components/diff-stat'
+import { buildRows, LineRow } from '@/components/diff-view'
+import { FileIcon } from '@/components/file-icon'
+import { Markdown } from '@/components/markdown'
+import { PaneButton } from '@/components/pane'
+import { PrBadge, ProviderMark, STATUS_TEXT, StatusDot } from '@/components/agent-bits'
+import {
+  effortLabel,
+  formatCost,
+  formatDuration,
+  formatTokens,
+  modelLabel,
+  permissionLabel,
+  readFlag,
+  runningFor,
+  upsertEvent,
+  useNow,
+  writeFlag,
+  type AgentsStore
+} from '@/lib/agents'
+import { languageFor } from '@/lib/highlight'
+import { useHighlighted } from '@/lib/hooks'
+import { splitPath } from '@/lib/paths'
+import { cn, errorMessage } from '@/lib/utils'
+
+const CHANGES_KEY = 'prot:agents:changes-open'
+
+export function AgentView({
+  id,
+  store,
+  onSelect,
+  onClosed,
+  onOpenPull
+}: {
+  id: string
+  store: AgentsStore
+  onSelect: (id: string) => void
+  onClosed: () => void
+  onOpenPull: (pr: AgentPr) => void
+}) {
+  const listed = store.state?.agents.find((agent) => agent.id === id) ?? null
+  const providers = store.state?.providers ?? []
+  const [detail, setDetail] = useState<AgentDetail | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [changesOpen, setChangesOpen] = useState(() => readFlag(CHANGES_KEY, true))
+  const [changes, setChanges] = useState<AgentFileChange[] | null>(null)
+  const [changesTick, setChangesTick] = useState(0)
+  const [file, setFile] = useState<string | null>(null)
+  const agent: AgentSummary | null = listed ?? detail
+
+  useEffect(() => {
+    let live = true
+    let loaded = false
+    let pending: AgentEvent[] = []
+    const unsubscribe = window.prot.agents.onChange((change) => {
+      if (change.agent.id !== id) return
+      if (change.agent.unread) void window.prot.agents.markRead(id)
+      if (change.event?.kind === 'turn') setChangesTick((n) => n + 1)
+      if (!loaded) {
+        if (change.event) pending.push(change.event)
+        return
+      }
+      const event = change.event
+      setDetail((prev) => (prev ? { ...prev, ...change.agent, transcript: event ? upsertEvent(prev.transcript, event) : prev.transcript } : prev))
+    })
+    window.prot.agents
+      .get(id)
+      .then((next) => {
+        if (!live) return
+        loaded = true
+        let transcript = next.transcript
+        for (const event of pending) transcript = upsertEvent(transcript, event)
+        pending = []
+        setDetail({ ...next, transcript })
+      })
+      .catch((error: unknown) => {
+        if (live) setLoadError(errorMessage(error))
+      })
+    void window.prot.agents.markRead(id)
+    return () => {
+      live = false
+      unsubscribe()
+    }
+  }, [id])
+
+  const stat = agent?.changes ? `${agent.changes.files}:${agent.changes.additions}:${agent.changes.deletions}` : ''
+  useEffect(() => {
+    let live = true
+    window.prot.agents
+      .changes(id)
+      .then((next) => {
+        if (live) setChanges(next)
+      })
+      .catch(() => {
+        if (live) setChanges([])
+      })
+    return () => {
+      live = false
+    }
+  }, [id, changesTick, stat])
+
+  function toggleChanges() {
+    setChangesOpen(!changesOpen)
+    writeFlag(CHANGES_KEY, !changesOpen)
+  }
+
+  if (!agent) {
+    return (
+      <div className="pane flex h-full items-center justify-center font-mono text-[12px] text-muted-foreground">
+        {loadError ? <p role="alert" className="text-destructive">! {loadError}</p> : <LoaderCircle aria-label="Loading agent" className="size-4 animate-spin" />}
+      </div>
+    )
+  }
+
+  return (
+    <div className="pane flex h-full flex-col overflow-hidden">
+      <Header
+        agent={agent}
+        providers={providers}
+        changesOpen={changesOpen}
+        changeCount={changes?.length ?? 0}
+        onToggleChanges={toggleChanges}
+        onOpenPull={onOpenPull}
+        onArchived={() => {
+          store.remove(agent.id)
+          onClosed()
+        }}
+      />
+      <div className="flex min-h-0 flex-1">
+        <div className="flex min-w-0 flex-1 flex-col">
+          {file ? (
+            <PatchPane agentId={agent.id} path={file} tick={changesTick} onClose={() => setFile(null)} />
+          ) : (
+            <Transcript agent={agent} detail={detail} error={loadError} />
+          )}
+          <FollowUp agent={agent} store={store} onSelect={onSelect} />
+        </div>
+        {changesOpen && <ChangesPanel changes={changes} selected={file} onSelect={setFile} />}
+      </div>
+    </div>
+  )
+}
+
+function Chip({ children, title }: { children: ReactNode; title?: string }) {
+  return (
+    <span title={title} className="inline-flex max-w-full items-center gap-1 rounded-[4px] border border-pane-border px-1.5 leading-[18px]">
+      {children}
+    </span>
+  )
+}
+
+function Header({
+  agent,
+  providers,
+  changesOpen,
+  changeCount,
+  onToggleChanges,
+  onOpenPull,
+  onArchived
+}: {
+  agent: AgentSummary
+  providers: ProviderInfo[]
+  changesOpen: boolean
+  changeCount: number
+  onToggleChanges: () => void
+  onOpenPull: (pr: AgentPr) => void
+  onArchived: () => void
+}) {
+  const model = modelLabel(providers, agent.provider, agent.model)
+  const permission = permissionLabel(providers, agent.provider, agent.permission)
+  const permissionHint = providers.find((p) => p.provider === agent.provider)?.permissions.find((p) => p.id === agent.permission)?.hint
+  const where = [agent.repoName, agent.branch].filter(Boolean).join(' · ')
+
+  function open(target: AgentOpenTarget) {
+    window.prot.agents.open(agent.id, target).catch((error: unknown) => {
+      toast.error('Could not open the agent folder', { description: errorMessage(error) })
+    })
+  }
+
+  function stop() {
+    window.prot.agents.stop(agent.id).catch((error: unknown) => {
+      toast.error('Could not stop the agent', { description: errorMessage(error) })
+    })
+  }
+
+  function archive() {
+    window.prot.agents
+      .archive(agent.id)
+      .then(onArchived)
+      .catch((error: unknown) => {
+        toast.error('Could not archive the agent', { description: errorMessage(error) })
+      })
+  }
+
+  return (
+    <header className="shrink-0 border-b border-pane-border py-2 pr-2 pl-3.5">
+      <div className="flex items-center gap-2">
+        <StatusDot status={agent.status} />
+        <h1 className="min-w-0 flex-1 truncate text-[13px] font-semibold" title={agent.title}>
+          {agent.title}
+        </h1>
+        <span className="flex shrink-0 items-center gap-0.5">
+          {agent.status === 'running' && (
+            <Button size="xs" variant="outline" aria-label="Stop agent" onClick={stop} className="mr-1 font-mono text-[11px]">
+              <Square className="size-2.5 fill-current" />
+              Stop
+            </Button>
+          )}
+          <PaneButton aria-label="Open in Finder" title="Open in Finder" onClick={() => open('finder')}>
+            <FolderOpen />
+          </PaneButton>
+          <PaneButton aria-label="Open in editor" title="Open in editor" onClick={() => open('editor')}>
+            <Code />
+          </PaneButton>
+          <PaneButton aria-label="Open in terminal" title="Open in terminal" onClick={() => open('terminal')}>
+            <SquareTerminal />
+          </PaneButton>
+          <PaneButton aria-label="Archive agent" title="Hide from the dash; the worktree and branch stay" onClick={archive}>
+            <Archive />
+          </PaneButton>
+          <PaneButton
+            aria-label="Changes"
+            aria-pressed={changesOpen}
+            title={changesOpen ? 'Hide changes' : 'Show changes'}
+            onClick={onToggleChanges}
+            className={cn('relative', changesOpen && 'text-foreground')}
+          >
+            <PanelRight />
+            {changeCount > 0 && !changesOpen && (
+              <span aria-hidden className="absolute -top-0.5 -right-0.5 flex size-3 items-center justify-center rounded-full bg-primary font-mono text-[8.5px] leading-none text-primary-foreground">
+                {changeCount > 9 ? '9+' : changeCount}
+              </span>
+            )}
+          </PaneButton>
+        </span>
+      </div>
+      <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-4 font-mono text-[10.5px] text-muted-foreground">
+        <Chip>
+          <ProviderMark provider={agent.provider} />
+          {PROVIDER_NAMES[agent.provider]}
+        </Chip>
+        {model && <Chip>{model}</Chip>}
+        {agent.effort && <Chip>{effortLabel(agent.effort).toLowerCase()}</Chip>}
+        {permission && <Chip title={permissionHint}>{permission}</Chip>}
+        <span className={cn(agent.status === 'failed' && 'text-destructive', agent.status === 'running' && 'text-added')}>
+          {STATUS_TEXT[agent.status]}
+        </span>
+        {agent.source !== 'prot' && <span>· from the {agent.source === 'claude-app' ? 'Claude' : 'Codex'} app</span>}
+        <span aria-hidden>·</span>
+        <span className="min-w-0 truncate" title={agent.cwd}>
+          {where || agent.cwd}
+        </span>
+        {agent.pr && (
+          <button
+            type="button"
+            aria-label={`Open pull request #${agent.pr.number}`}
+            title={agent.pr.title}
+            onClick={() => agent.pr && onOpenPull(agent.pr)}
+            className="rounded-[3px] outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+          >
+            <PrBadge pr={agent.pr} />
+          </button>
+        )}
+        {agent.costUsd !== null && <span className="ml-auto tabular-nums">{formatCost(agent.costUsd)}</span>}
+      </div>
+    </header>
+  )
+}
+
+function Transcript({
+  agent,
+  detail,
+  error
+}: {
+  agent: AgentSummary
+  detail: AgentDetail | null
+  error: string | null
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const pinned = useRef(true)
+  const transcript = detail?.transcript
+  const running = agent.status === 'running'
+  const now = useNow(1000, running)
+
+  useLayoutEffect(() => {
+    const element = ref.current
+    if (element && pinned.current) element.scrollTop = element.scrollHeight
+  }, [transcript, running])
+
+  if (!detail) {
+    return (
+      <div className="flex min-h-0 flex-1 items-center justify-center font-mono text-[12px] text-muted-foreground">
+        {error ? (
+          <p role="alert" className="text-destructive">
+            ! {error}
+          </p>
+        ) : (
+          <LoaderCircle aria-label="Loading transcript" className="size-4 animate-spin" />
+        )}
+      </div>
+    )
+  }
+
+  const last = detail.transcript[detail.transcript.length - 1]
+  const toolRunning = last?.kind === 'tool' && last.status === 'running'
+  return (
+    <div
+      ref={ref}
+      role="log"
+      aria-label="Transcript"
+      onScroll={(event) => {
+        const element = event.currentTarget
+        pinned.current = element.scrollHeight - element.scrollTop - element.clientHeight < 80
+      }}
+      className="scroll-quiet min-h-0 flex-1 space-y-3 overflow-y-auto px-5 pt-4 pb-5"
+    >
+      {detail.transcript.length === 0 && !running && (
+        <p className="font-mono text-[12px] text-muted-foreground">No messages yet.</p>
+      )}
+      {detail.transcript.map((event) => (
+        <TranscriptEvent key={event.id} event={event} />
+      ))}
+      {running && !toolRunning && (
+        <p className="flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
+          <LoaderCircle aria-hidden className="size-3.5 animate-spin" />
+          working
+          <span className="tabular-nums">{runningFor(agent, now)}</span>
+        </p>
+      )}
+    </div>
+  )
+}
+
+function TranscriptEvent({ event }: { event: AgentEvent }) {
+  switch (event.kind) {
+    case 'user':
+      return (
+        <div className="flex justify-end">
+          <p className="max-w-[85%] rounded-[10px] bg-selection px-3 py-2 font-mono text-[12.5px] leading-[1.6] whitespace-pre-wrap [overflow-wrap:anywhere]">
+            {event.text}
+          </p>
+        </div>
+      )
+    case 'assistant':
+      return <Markdown className="text-[13px] leading-[1.7] text-foreground/90">{event.text}</Markdown>
+    case 'thinking':
+      return <Thinking text={event.text} />
+    case 'tool':
+      return <ToolRow event={event} />
+    case 'error':
+      return (
+        <p className="rounded-[6px] border border-destructive/30 bg-destructive/5 px-2.5 py-1.5 font-mono text-[11.5px] whitespace-pre-wrap text-destructive [overflow-wrap:anywhere]">
+          ! {event.text}
+        </p>
+      )
+    case 'turn':
+      return <TurnFooter event={event} />
+  }
+}
+
+function Thinking({ text }: { text: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div>
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1 rounded-[3px] font-mono text-[11px] text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+      >
+        <ChevronRight aria-hidden className={cn('size-3 transition-transform', open && 'rotate-90')} />
+        <Brain aria-hidden className="size-3" />
+        Thinking
+      </button>
+      {open && (
+        <p className="mt-1.5 ml-1.5 border-l border-frame pl-3 font-copy text-[12px] leading-[1.7] whitespace-pre-wrap text-muted-foreground [overflow-wrap:anywhere]">
+          {text}
+        </p>
+      )}
+    </div>
+  )
+}
+
+function ToolRow({ event }: { event: Extract<AgentEvent, { kind: 'tool' }> }) {
+  const [open, setOpen] = useState(false)
+  const output = event.output?.trimEnd() ?? ''
+  return (
+    <div className="rounded-[6px] border border-pane-border">
+      <button
+        type="button"
+        aria-expanded={output ? open : undefined}
+        aria-label={`${event.name} ${event.summary}`.trim()}
+        disabled={!output}
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center gap-2 rounded-[6px] px-2 py-1 text-left font-mono text-[11.5px] outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring/50 disabled:hover:bg-transparent"
+      >
+        {event.status === 'running' ? (
+          <LoaderCircle aria-label="running" className="size-3 shrink-0 animate-spin text-muted-foreground" />
+        ) : event.status === 'ok' ? (
+          <Check aria-label="ok" className="size-3 shrink-0 text-added" />
+        ) : (
+          <X aria-label="error" className="size-3 shrink-0 text-removed" />
+        )}
+        <span className="shrink-0 font-medium">{event.name}</span>
+        <span className="min-w-0 flex-1 truncate text-muted-foreground" title={event.summary}>
+          {event.summary}
+        </span>
+        {output && <ChevronRight aria-hidden className={cn('size-3 shrink-0 text-muted-foreground transition-transform', open && 'rotate-90')} />}
+      </button>
+      {open && output && (
+        <pre
+          className={cn(
+            'scroll-quiet max-h-80 overflow-auto border-t border-pane-border bg-muted px-2.5 py-2 font-mono text-[11.5px] leading-[1.55] whitespace-pre-wrap [overflow-wrap:anywhere]',
+            event.status === 'error' && 'text-destructive'
+          )}
+        >
+          {output}
+        </pre>
+      )}
+    </div>
+  )
+}
+
+function TurnFooter({ event }: { event: Extract<AgentEvent, { kind: 'turn' }> }) {
+  const parts: string[] = []
+  if (event.durationMs !== null) parts.push(formatDuration(event.durationMs))
+  if (event.costUsd !== null) parts.push(formatCost(event.costUsd))
+  if (event.inputTokens !== null) parts.push(`${formatTokens(event.inputTokens)} in`)
+  if (event.outputTokens !== null) parts.push(`${formatTokens(event.outputTokens)} out`)
+  return (
+    <div className="flex items-center gap-2 py-1 font-mono text-[10.5px] text-muted-foreground tabular-nums">
+      <span aria-hidden className="flex-1 border-t border-dashed border-frame" />
+      <span>{parts.length > 0 ? parts.join(' · ') : 'turn done'}</span>
+      <span aria-hidden className="flex-1 border-t border-dashed border-frame" />
+    </div>
+  )
+}
+
+function FollowUp({ agent, store, onSelect }: { agent: AgentSummary; store: AgentsStore; onSelect: (id: string) => void }) {
+  const [text, setText] = useState('')
+  const [sending, setSending] = useState(false)
+  const outside = agent.source !== 'prot'
+  const running = agent.status === 'running'
+  const ready = text.trim().length > 0 && !running && !sending
+
+  async function send() {
+    if (!ready) return
+    setSending(true)
+    try {
+      const next = await window.prot.agents.send(agent.id, text.trim())
+      store.upsert(next)
+      setText('')
+      if (next.id !== agent.id) onSelect(next.id)
+    } catch (error) {
+      toast.error(outside ? 'Could not continue the session' : 'Could not send the message', { description: errorMessage(error) })
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <div className="shrink-0 border-t border-pane-border p-2.5">
+      <div className="flex items-end gap-2 rounded-[9px] border border-pane-border bg-muted/40 p-1 pl-2.5 font-mono focus-within:border-frame">
+        <span aria-hidden className="py-1.5 text-[12.5px] leading-5 text-muted-foreground">
+          ›
+        </span>
+        <Textarea
+          aria-label="Message agent"
+          placeholder={running ? 'The agent is working…' : outside ? 'Continue in prot (forks the session)' : 'Send a follow-up'}
+          value={text}
+          disabled={running || sending}
+          onChange={(event) => setText(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+              event.preventDefault()
+              void send()
+            }
+          }}
+          rows={2}
+          className="max-h-48 min-h-0 resize-none border-0 bg-transparent p-0 py-1.5 font-mono text-[12.5px] leading-5 shadow-none focus-visible:ring-0 disabled:opacity-60 dark:bg-transparent"
+        />
+        {outside ? (
+          <Button size="sm" aria-label="Continue in prot" disabled={!ready} onClick={() => void send()} className="h-7 rounded-[7px] px-2.5 font-mono text-[11.5px]">
+            {sending ? <LoaderCircle className="animate-spin" /> : <ArrowUp />}
+            Continue in prot
+          </Button>
+        ) : (
+          <Button size="icon-sm" aria-label="Send" title="Send (⌘↵)" disabled={!ready} onClick={() => void send()} className="size-7 rounded-[7px]">
+            {sending ? <LoaderCircle className="size-4 animate-spin" /> : <ArrowUp className="size-4" />}
+          </Button>
+        )}
+      </div>
+      <p className="px-1 pt-1.5 font-mono text-[10.5px] text-muted-foreground">
+        {outside ? 'Continue in prot (forks the session) · ⌘↵' : running ? 'Follow-ups open when the turn ends' : '⌘↵ to send'}
+      </p>
+    </div>
+  )
+}
+
+function ChangesPanel({
+  changes,
+  selected,
+  onSelect
+}: {
+  changes: AgentFileChange[] | null
+  selected: string | null
+  onSelect: (path: string | null) => void
+}) {
+  let additions = 0
+  let deletions = 0
+  for (const change of changes ?? []) {
+    additions += change.additions
+    deletions += change.deletions
+  }
+  return (
+    <aside aria-label="Changes" className="flex w-[280px] shrink-0 flex-col border-l border-pane-border">
+      <div className="flex h-9 shrink-0 items-center gap-2 pr-2 pl-3 font-mono text-[11.5px] text-muted-foreground">
+        <span className="text-foreground">changes</span>
+        <span className="tabular-nums">{changes?.length ?? 0}</span>
+        <span className="flex-1" />
+        <DiffStat additions={additions} deletions={deletions} className="text-[11px]" />
+      </div>
+      <div className="scroll-quiet min-h-0 flex-1 overflow-y-auto px-1.5 pb-2">
+        {changes === null ? (
+          <LoaderCircle aria-label="Loading changes" className="mx-auto mt-4 size-3.5 animate-spin text-muted-foreground" />
+        ) : changes.length === 0 ? (
+          <p className="px-1.5 py-1 font-mono text-[11.5px] text-muted-foreground">No changes yet.</p>
+        ) : (
+          <ul className="space-y-px">
+            {changes.map((change) => {
+              const { name, dir } = splitPath(change.path)
+              const isSelected = selected === change.path
+              return (
+                <li key={change.path}>
+                  <button
+                    type="button"
+                    aria-label={change.path}
+                    aria-current={isSelected ? 'true' : undefined}
+                    title={`${change.path} (${change.status})`}
+                    onClick={() => onSelect(isSelected ? null : change.path)}
+                    className={cn(
+                      'flex w-full items-center gap-1.5 rounded-[5px] px-1.5 py-1 text-left font-mono text-[11.5px] transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
+                      isSelected ? 'bg-selection' : 'hover:bg-accent'
+                    )}
+                  >
+                    <FileIcon path={change.path} className="size-3.5 shrink-0" />
+                    <span className="min-w-0 flex-1 truncate">
+                      <span className={cn(change.status === 'removed' && 'text-removed line-through', (change.status === 'added' || change.status === 'untracked') && 'text-added')}>
+                        {name}
+                      </span>
+                      {dir && <span className="ml-1.5 text-[10.5px] text-muted-foreground">{dir}</span>}
+                    </span>
+                    <DiffStat additions={change.additions} deletions={change.deletions} className="text-[10.5px]" />
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </div>
+    </aside>
+  )
+}
+
+function PatchPane({ agentId, path, tick, onClose }: { agentId: string; path: string; tick: number; onClose: () => void }) {
+  const [patch, setPatch] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let live = true
+    setError(null)
+    window.prot.agents
+      .diff(agentId, path)
+      .then((next) => {
+        if (live) setPatch(next)
+      })
+      .catch((failure: unknown) => {
+        if (live) setError(errorMessage(failure))
+      })
+    return () => {
+      live = false
+    }
+  }, [agentId, path, tick])
+
+  return (
+    <section aria-label={`Diff of ${path}`} className="flex min-h-0 flex-1 flex-col">
+      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-pane-border pr-2 pl-3.5">
+        <FileIcon path={path} className="size-3.5 shrink-0" />
+        <span className="min-w-0 flex-1 truncate font-mono text-[11.5px]" title={path}>
+          {path}
+        </span>
+        <PaneButton aria-label="Back to transcript" title="Back to transcript" onClick={onClose}>
+          <X />
+        </PaneButton>
+      </div>
+      <div className="scroll-quiet min-h-0 flex-1 overflow-auto">
+        {error ? (
+          <p role="alert" className="px-4 py-6 font-mono text-[12px] text-destructive">
+            ! {error}
+          </p>
+        ) : patch === null ? (
+          <LoaderCircle aria-label="Loading diff" className="mx-auto mt-6 size-4 animate-spin text-muted-foreground" />
+        ) : (
+          <PatchView path={path} patch={patch} />
+        )}
+      </div>
+    </section>
+  )
+}
+
+function PatchView({ path, patch }: { path: string; patch: string }) {
+  const lang = languageFor(path)
+  const { rows, oldSide, newSide } = useMemo(() => buildRows(parsePatch(patch), false), [patch])
+  const oldTokens = useHighlighted(oldSide, lang)
+  const newTokens = useHighlighted(newSide, lang)
+  if (rows.length === 0) {
+    return (
+      <p className="px-4 py-6 text-center font-mono text-[12px] text-muted-foreground">
+        No textual diff for this file. It may be binary or only renamed.
+      </p>
+    )
+  }
+  return (
+    <div className="py-1 font-mono text-[12px] leading-5">
+      {rows.map((row) => {
+        if (row.kind === 'gap') return null
+        if (row.kind === 'hunk') {
+          return (
+            <div key={row.key} className="truncate py-0.5 pr-4 pl-[86px] text-hunk select-none">
+              {row.header}
+            </div>
+          )
+        }
+        const side = row.tokenSide === 'old' ? oldTokens : newTokens
+        return <LineRow key={row.key} line={row.line} tokens={side?.[row.tokenIndex]} />
+      })}
+    </div>
+  )
+}

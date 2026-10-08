@@ -1,3 +1,4 @@
+import type { AgentPr, AgentPrState } from '@shared/agents'
 import type {
   GitHubUser,
   PullBucket,
@@ -166,6 +167,20 @@ export class GitHubClient {
       for (const [key, pull] of result.pulls) pulls.set(key, pull)
     }
     return pulls
+  }
+
+  // The newest PR from owner:branch in any state, or null.
+  async findPullByBranch(owner: string, repo: string, branch: string): Promise<AgentPr | null> {
+    const raw = await this.json<RawPull[]>(`${repoPath({ owner, repo, number: 0 })}/pulls`, {
+      query: { head: `${owner}:${branch}`, state: 'all', per_page: '1' }
+    })
+    const pull = raw[0]
+    if (!pull) return null
+    let state: AgentPrState = 'open'
+    if (pull.merged_at) state = 'merged'
+    else if (pull.state === 'closed') state = 'closed'
+    else if (pull.draft) state = 'draft'
+    return { owner, repo, number: pull.number, title: pull.title, state, url: pull.html_url }
   }
 
   async getHeadSha(ref: PullRef): Promise<string> {

@@ -5,6 +5,7 @@ import type { AuthState, GitHubUser, InboxState, PullRef } from '@shared/types'
 import { pullKey } from '@shared/types'
 import { fallbackRepo } from '@shared/pull-input'
 import { Toaster } from '@/components/ui/sonner'
+import { AgentsScreen } from '@/components/agents-screen'
 import { AuthGate } from '@/components/auth-gate'
 import { ChatWidget } from '@/components/chat-widget'
 import { Logo } from '@/components/logo'
@@ -29,9 +30,22 @@ export function App() {
 function Root() {
   const { resolvedTheme } = usePrefs()
   const [auth, setAuth] = useState<AuthState | null>(null)
-  const [screen, setScreen] = useState<'home' | 'review'>('home')
+  const [screen, setScreen] = useState<'home' | 'review' | 'agents'>('home')
   const [selected, setSelected] = useState<PullRef | null>(null)
   const goHome = () => setScreen('home')
+  const login = auth?.status === 'signed_in' ? auth.user.login : null
+
+  function openPull(ref: PullRef) {
+    window.prot.inbox
+      .checkout(ref)
+      .then((resolved) => {
+        setSelected(resolved)
+        setScreen('review')
+      })
+      .catch((error: unknown) => {
+        toast.error(`Could not open ${pullKey(ref)}`, { description: errorMessage(error) })
+      })
+  }
 
   useEffect(() => {
     window.prot.auth.get().then(setAuth)
@@ -47,8 +61,9 @@ function Root() {
   return (
     <>
       {screen === 'home' && (
-        <Home login={auth?.status === 'signed_in' ? auth.user.login : null} onReview={() => setScreen('review')} />
+        <Home login={login} onReview={() => setScreen('review')} onAgents={() => setScreen('agents')} />
       )}
+      {screen === 'agents' && <AgentsScreen login={login} onHome={goHome} onOpenPull={openPull} />}
       {screen === 'review' && auth?.status === 'signed_out' && <AuthGate error={auth.error} onAuth={setAuth} onHome={goHome} />}
       {screen === 'review' && auth?.status === 'signed_in' && (
         <Shell

@@ -13,6 +13,17 @@ import type {
   Settings
 } from './types'
 import type { PromptKind, PromptLibrary, PromptVersion } from './prompts'
+import type {
+  AgentChange,
+  AgentDetail,
+  AgentFileChange,
+  AgentOpenTarget,
+  AgentRepo,
+  AgentStartInput,
+  AgentSummary,
+  AgentsState,
+  AgentUsageChange
+} from './agents'
 
 export interface ProtApi {
   auth: {
@@ -67,6 +78,28 @@ export interface ProtApi {
     get(): Promise<KeysState>
     setAnthropic(key: string | null): Promise<KeysState>
   }
+  agents: {
+    state(): Promise<AgentsState>
+    // Re-detects the CLIs, sign-in, models and sessions started outside prot.
+    refresh(): Promise<AgentsState>
+    start(input: AgentStartInput): Promise<AgentSummary>
+    get(id: string): Promise<AgentDetail>
+    // Sends a follow-up turn. On a session started outside prot this forks it into a new prot agent and resolves that agent.
+    send(id: string, prompt: string): Promise<AgentSummary>
+    stop(id: string): Promise<void>
+    markRead(id: string): Promise<void>
+    // Hides the agent from the dash; its worktree and branch stay.
+    archive(id: string): Promise<void>
+    // Removes the agent's worktree directory; the branch stays.
+    removeWorktree(id: string): Promise<void>
+    changes(id: string): Promise<AgentFileChange[]>
+    diff(id: string, path: string): Promise<string>
+    // Opens a folder picker and adds the chosen git repo; null when cancelled.
+    addRepo(): Promise<AgentRepo | null>
+    open(id: string, target: AgentOpenTarget): Promise<void>
+    onChange(cb: (change: AgentChange) => void): () => void
+    onUsage(cb: (change: AgentUsageChange) => void): () => void
+  }
   openExternal(url: string): Promise<void>
   copyLink(url: string): Promise<void>
 }
@@ -104,6 +137,21 @@ export const IPC = {
   promptsRemove: 'prompts:remove',
   keysGet: 'keys:get',
   keysSetAnthropic: 'keys:set-anthropic',
+  agentsState: 'agents:state',
+  agentsRefresh: 'agents:refresh',
+  agentsStart: 'agents:start',
+  agentsGet: 'agents:get',
+  agentsSend: 'agents:send',
+  agentsStop: 'agents:stop',
+  agentsMarkRead: 'agents:mark-read',
+  agentsArchive: 'agents:archive',
+  agentsRemoveWorktree: 'agents:remove-worktree',
+  agentsChanges: 'agents:changes',
+  agentsDiff: 'agents:diff',
+  agentsAddRepo: 'agents:add-repo',
+  agentsOpen: 'agents:open',
+  agentsChanged: 'agents:changed',
+  agentsUsage: 'agents:usage',
   openExternal: 'open-external',
   copyLink: 'copy-link'
 } as const

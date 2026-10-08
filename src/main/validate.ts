@@ -1,5 +1,8 @@
+import { isAbsolute } from 'node:path'
+import { AGENT_PROVIDERS, type AgentOpenTarget, type AgentStartInput } from '@shared/agents'
 import { PROMPT_HASH, PROMPT_KINDS, PROMPT_NAME_MAX, PROMPT_TEXT_MAX, type PromptKind } from '@shared/prompts'
 import { RISK_LEVELS } from '@shared/types'
+import { PERMISSIONS } from './agents/cli'
 import type {
   CardContext,
   CardRole,
@@ -333,4 +336,48 @@ export function parsePromptName(raw: unknown): string {
   const name = str(raw, 'Prompt name').trim()
   if (name.length > PROMPT_NAME_MAX) throw new Error(`A prompt name is at most ${PROMPT_NAME_MAX} characters`)
   return name
+}
+
+export const AGENT_PROMPT_MAX = 100_000
+const AGENT_ID = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|(?:claude|codex)-app:[A-Za-z0-9-]{1,100})$/
+const AGENT_MODEL = /^[A-Za-z0-9._:/[\]-]{1,100}$/
+const AGENT_EFFORT = /^[a-z]{1,20}$/
+
+export function parseAgentId(raw: unknown): string {
+  const id = str(raw, 'agent id')
+  if (!AGENT_ID.test(id)) throw new Error('Invalid agent id')
+  return id
+}
+
+export function parseAgentPrompt(raw: unknown): string {
+  const prompt = str(raw, 'Prompt')
+  if (prompt.trim() === '') throw new Error('Prompt must not be empty')
+  if (prompt.length > AGENT_PROMPT_MAX) throw new Error(`A prompt is at most ${AGENT_PROMPT_MAX} characters`)
+  return prompt
+}
+
+export function parseAgentStartInput(raw: unknown): AgentStartInput {
+  const value = obj(raw, 'Agent')
+  const provider = oneOf(value.provider, AGENT_PROVIDERS, 'Provider')
+  const repoPath = str(value.repoPath, 'repoPath')
+  if (!isAbsolute(repoPath)) throw new Error('repoPath must be an absolute path')
+  const model = str(value.model, 'model')
+  if (!AGENT_MODEL.test(model)) throw new Error('Invalid model')
+  // The effort ends up inside a TOML value for Codex, so it is a bare word.
+  const effort = str(value.effort, 'effort')
+  if (!AGENT_EFFORT.test(effort)) throw new Error('Invalid effort')
+  const permission = oneOf(value.permission, PERMISSIONS[provider].map((option) => option.id), 'Permission')
+  if (typeof value.worktree !== 'boolean') throw new Error('worktree must be a boolean')
+  return { provider, repoPath, prompt: parseAgentPrompt(value.prompt), model, effort, permission, worktree: value.worktree }
+}
+
+export function parseAgentOpenTarget(raw: unknown): AgentOpenTarget {
+  return oneOf(raw, ['finder', 'editor', 'terminal'] as const, 'Open target')
+}
+
+// A repo-relative path; the diff itself only runs for paths git lists as changed.
+export function parseAgentDiffPath(raw: unknown): string {
+  const path = nonEmptyStr(raw, 'path')
+  if (path.includes('\0') || isAbsolute(path) || path.split('/').includes('..')) throw new Error('Invalid path')
+  return path
 }

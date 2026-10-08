@@ -1,5 +1,6 @@
 import { clipboard, ipcMain, shell } from 'electron'
 import { IPC } from '@shared/ipc'
+import type { AgentManager } from './agents/manager'
 import type { AttachmentService } from './attachments'
 import type { AuthService } from './auth'
 import type { ChatService } from './chat'
@@ -13,6 +14,11 @@ import type { SecretsStore } from './secrets'
 import type { SettingsStore } from './settings'
 import { parseSettingsPatch } from './settings-validate'
 import {
+  parseAgentDiffPath,
+  parseAgentId,
+  parseAgentOpenTarget,
+  parseAgentPrompt,
+  parseAgentStartInput,
   parseAnthropicKey,
   parseChatRequest,
   parseCommentId,
@@ -41,10 +47,11 @@ export type Services = {
   settings: SettingsStore
   secrets: SecretsStore
   prompts: PromptStore
+  agents: AgentManager
 }
 
 export function registerIpc(services: Services): void {
-  const { auth, poller, pulls, guide, attachments, cache, code, chat, settings, secrets, prompts } = services
+  const { auth, poller, pulls, guide, attachments, cache, code, chat, settings, secrets, prompts, agents } = services
 
   ipcMain.handle(IPC.authGet, () => auth.get())
   ipcMain.handle(IPC.authGh, () => auth.signInWithGh())
@@ -117,6 +124,20 @@ export function registerIpc(services: Services): void {
     await secrets.update({ anthropicKey: parseAnthropicKey(key) })
     return { anthropic: await secrets.hasAnthropicKey() }
   })
+
+  ipcMain.handle(IPC.agentsState, () => agents.state())
+  ipcMain.handle(IPC.agentsRefresh, () => agents.refresh())
+  ipcMain.handle(IPC.agentsStart, (_event, input: unknown) => agents.start(parseAgentStartInput(input)))
+  ipcMain.handle(IPC.agentsGet, (_event, id: unknown) => agents.get(parseAgentId(id)))
+  ipcMain.handle(IPC.agentsSend, (_event, id: unknown, prompt: unknown) => agents.send(parseAgentId(id), parseAgentPrompt(prompt)))
+  ipcMain.handle(IPC.agentsStop, (_event, id: unknown) => agents.stop(parseAgentId(id)))
+  ipcMain.handle(IPC.agentsMarkRead, (_event, id: unknown) => agents.markRead(parseAgentId(id)))
+  ipcMain.handle(IPC.agentsArchive, (_event, id: unknown) => agents.archive(parseAgentId(id)))
+  ipcMain.handle(IPC.agentsRemoveWorktree, (_event, id: unknown) => agents.removeWorktree(parseAgentId(id)))
+  ipcMain.handle(IPC.agentsChanges, (_event, id: unknown) => agents.changes(parseAgentId(id)))
+  ipcMain.handle(IPC.agentsDiff, (_event, id: unknown, path: unknown) => agents.diff(parseAgentId(id), parseAgentDiffPath(path)))
+  ipcMain.handle(IPC.agentsAddRepo, () => agents.addRepo())
+  ipcMain.handle(IPC.agentsOpen, (_event, id: unknown, target: unknown) => agents.open(parseAgentId(id), parseAgentOpenTarget(target)))
 
   ipcMain.handle(IPC.openExternal, (_event, url: unknown) => shell.openExternal(parseHttpsUrl(url)))
   ipcMain.handle(IPC.copyLink, (_event, url: unknown) => clipboard.writeText(parseHttpsUrl(url)))

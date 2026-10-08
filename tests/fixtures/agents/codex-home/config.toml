@@ -1,0 +1,6 @@
+model = "gpt-6-astra"
+model_reasoning_effort = "xhigh"
+
+[mcp_servers.example]
+command = "x"
+model = "ignored"

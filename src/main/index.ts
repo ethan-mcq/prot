@@ -1,6 +1,8 @@
 import { join } from 'node:path'
 import { app, BrowserWindow, protocol } from 'electron'
 import { IPC } from '@shared/ipc'
+import { AgentManager } from './agents/manager'
+import { AgentStore } from './agents/store'
 import { ATTACHMENT_SCHEME, AttachmentService, serveAttachment } from './attachments'
 import { AuthService } from './auth'
 import { ChatService } from './chat'
@@ -61,6 +63,9 @@ function boot(): void {
   const guide = new GuideService(secrets, settings, prompts, pulls, code, join(userData, 'guides'))
   const cache = new PullCache(guide, attachments)
   const chat = new ChatService(secrets, settings, pulls, prompts, broadcast)
+  const agents = new AgentManager(new AgentStore(userData), auth, settings, broadcast)
+  agents.boot()
+  app.on('before-quit', () => agents.shutdown())
   protocol.handle(ATTACHMENT_SCHEME, (request) => serveAttachment(attachmentsRoot, request.url))
 
   poller.onClosed((pull) => {
@@ -89,7 +94,7 @@ function boot(): void {
   })
   app.on('browser-window-focus', () => poller.refreshIfStale())
 
-  registerIpc({ auth, poller, pulls, guide, attachments, cache, code, chat, settings, secrets, prompts })
+  registerIpc({ auth, poller, pulls, guide, attachments, cache, code, chat, settings, secrets, prompts, agents })
   installMenu()
   auth.restore()
   createMainWindow()

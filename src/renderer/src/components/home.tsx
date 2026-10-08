@@ -3,7 +3,7 @@ import { ArrowRight, Bot, GitPullRequest } from 'lucide-react'
 import { TitleBar } from '@/components/title-bar'
 import { cn } from '@/lib/utils'
 
-export function Home({ login, onReview }: { login: string | null; onReview: () => void }) {
+export function Home({ login, onReview, onAgents }: { login: string | null; onReview: () => void; onAgents: () => void }) {
   return (
     <div className="flex h-full flex-col">
       <TitleBar login={login} onHome={() => {}} />
@@ -15,7 +15,13 @@ export function Home({ login, onReview }: { login: string | null; onReview: () =
             title="Agent dash"
             icon={<Bot />}
             description="Watch and steer the agents working on your repos."
-            footer="Coming soon"
+            footer={
+              <>
+                open
+                <ArrowRight aria-hidden className="size-3.5 transition-transform group-hover/card:translate-x-0.5" />
+              </>
+            }
+            onOpen={onAgents}
           />
           <HomeCard
             index={2}
