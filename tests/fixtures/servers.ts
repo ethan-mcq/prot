@@ -35,6 +35,11 @@ function json(res: ServerResponse, status: number, payload: unknown) {
   res.end(JSON.stringify(payload))
 }
 
+function png(res: ServerResponse, bytes: Buffer) {
+  res.writeHead(200, { 'content-type': 'image/png', 'content-length': bytes.length })
+  res.end(bytes)
+}
+
 async function listen(server: Server): Promise<string> {
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const { port } = server.address() as AddressInfo
@@ -54,6 +59,7 @@ export async function startGitHub(): Promise<GitHubFixture> {
   const prPath = `/repos/${pr.pull.owner}/${pr.pull.repo}`
   let state = pr.openedState
   const replies: ReturnType<typeof pr.reply>[] = []
+  let base = ''
 
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://fixture')
@@ -65,6 +71,15 @@ export async function startGitHub(): Promise<GitHubFixture> {
     }
 
     const p = url.pathname
+    const full = (req.headers.accept ?? '').includes('full+json')
+    if (p === pr.attachmentPaths.sheet) return png(res, pr.screenshotPng([22, 163, 74]))
+    if (p === pr.attachmentPaths.inbox) return png(res, pr.screenshotPng([37, 99, 235]))
+    if (p === pr.attachmentPaths.log) {
+      res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' })
+      return res.end(pr.intentLog)
+    }
+    if (p === `${prPath}/issues/${pr.pull.number}/comments` && req.method === 'GET') return json(res, 200, pr.issueComments(base, full))
+    if (/^\/repos\/[^/]+\/[^/]+\/issues\/\d+\/comments$/.test(p) && req.method === 'GET') return json(res, 200, [])
     if (p === '/user') return json(res, 200, pr.viewerUser)
     if (p === '/graphql' && req.method === 'POST') {
       const { query, variables } = body as { query: string; variables: Record<string, string | number> }
@@ -91,7 +106,7 @@ export async function startGitHub(): Promise<GitHubFixture> {
     if (p.startsWith(`${tools.toolsPath}/git/trees/`)) {
       return json(res, 200, { truncated: false, tree: tools.toolsTree().map((path) => ({ path, type: 'blob' })) })
     }
-    if (p === `${prPath}/pulls/${pr.pull.number}`) return json(res, 200, pr.pullDetail(state))
+    if (p === `${prPath}/pulls/${pr.pull.number}`) return json(res, 200, pr.pullDetail(state, base, full))
     if (p === `${prPath}/pulls/${pr.pull.number}/files`) {
       const page = Number(url.searchParams.get('page') ?? '1')
       return json(res, 200, page === 1 ? state.files : [])
@@ -128,8 +143,9 @@ export async function startGitHub(): Promise<GitHubFixture> {
     return json(res, 404, { message: `fixture has no route for ${req.method} ${p}` })
   })
 
+  base = await listen(server)
   return {
-    url: await listen(server),
+    url: base,
     requests,
     close: closer(server),
     push: () => {
@@ -168,8 +184,7 @@ export const aiGuide = {
   overview: {
     risk: { level: 'medium', reason: 'Every Android share now runs through CapyShareModule.takeShare, which no test exercises.' },
     synopsis:
-      'Android hands shared intents to a new native module that stages the items. The share inbox reads them through the CapyShare bridge and the sheet uploads them to a thread. A config plugin registers the share extension at prebuild.',
-    points: ['Register the share extension and Android share intents.', 'Stage shared items through the CapyShare native module.', 'Pick a destination thread and upload.']
+      'Android hands shared intents to a new native module that stages the items. The share inbox reads them through the CapyShare bridge and the sheet uploads them to a thread. A config plugin registers the share extension at prebuild.'
   },
   caption: 'Shared content reaches a thread',
   sections: [

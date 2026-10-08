@@ -3,6 +3,7 @@ import type { ViewContext } from '@shared/types'
 
 export const EMPTY_VIEW: ViewContext = {
   pull: null,
+  story: null,
   step: null,
   chapter: null,
   flow: null,

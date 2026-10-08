@@ -1,5 +1,5 @@
-import { Fragment, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
-import { Check, Maximize2, Workflow } from 'lucide-react'
+import { Fragment, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Check, Workflow } from 'lucide-react'
 import { locateFlowNode } from '@shared/guide'
 import type { CodeSymbol, FlowEdge, FlowNode } from '@shared/types'
 import { DiffStat } from '@/components/diff-stat'
@@ -61,7 +61,7 @@ function Legend() {
       <span className="text-added">+ added</span>
       {'  '}
       <span className="text-modified">~ modified</span>
-      {'  · existing   → calls   hover a node to see its links   click to jump to its line'}
+      {'  · existing   → calls   hover a node to see its links   click a node to enlarge it'}
     </p>
   )
 }
@@ -314,35 +314,30 @@ function FlowPill({
   const path = at?.path ?? node.file
   const chapterIndex = session.guide.chapters.findIndex((chapter) => chapter.id === node.chapterId)
   const hasChapter = chapterIndex !== -1
-  const clickable = hasChapter || path !== null
-
-  function jump(ide: boolean) {
-    dispatch({ type: 'focus/node', node, at, ide })
-  }
 
   const where = path === null ? null : `${splitPath(path).name}${at ? `:${at.line}` : ''}`
   const summary = [
     node.label,
     where,
     hasChapter ? `Chapter ${pad2(chapterIndex + 1)}` : null,
-    hasChapter && path !== null ? '⌘-click opens in IDE' : null
+    path !== null ? 'click to enlarge in the IDE' : null
   ]
   const hint = [summary.filter(Boolean).join(' · ')]
   if (calls.length > 0) hint.push(`calls ${calls.join(', ')}`)
   if (calledBy.length > 0) hint.push(`called by ${calledBy.join(', ')}`)
 
   return (
-    <div className={cn('group/pill relative transition-opacity', relation === 'dim' && 'opacity-55')}>
+    <div className={cn('relative transition-opacity', relation === 'dim' && 'opacity-55')}>
       <button
         type="button"
-        onClick={(event: MouseEvent) => jump(event.metaKey || event.ctrlKey || event.altKey)}
-        disabled={!clickable}
+        onClick={() => dispatch({ type: 'focus/node', node, at, ide: true })}
+        disabled={path === null}
         title={hint.join('\n')}
         aria-label={node.label}
         className={cn(
           'flex h-8 w-full items-center gap-2 rounded-[7px] border border-pane-border bg-card px-2.5 text-left font-mono text-[12px] transition-[color,background-color,border-color,box-shadow] disabled:cursor-default',
           tone.pill,
-          clickable && 'hover:border-frame hover:bg-accent',
+          path !== null && 'hover:border-frame hover:bg-accent',
           linked && 'ring-1 ring-command/50'
         )}
       >
@@ -365,17 +360,6 @@ function FlowPill({
           className="absolute -top-2 -right-2 rounded-[4px] border border-pane-border bg-card px-1 font-mono text-[10px] leading-[14px] text-muted-foreground transition-colors hover:border-frame hover:text-foreground"
         >
           {pad2(chapterIndex + 1)}
-        </button>
-      )}
-      {path !== null && (
-        <button
-          type="button"
-          aria-label={`Open ${path} in IDE`}
-          title="Open in IDE"
-          onClick={() => jump(true)}
-          className="absolute -right-2 -bottom-2 flex size-5 items-center justify-center rounded-[4px] border border-pane-border bg-card text-muted-foreground opacity-0 transition-opacity group-hover/pill:opacity-100 hover:text-foreground focus-visible:opacity-100"
-        >
-          <Maximize2 className="size-2.5" />
         </button>
       )}
     </div>

@@ -143,7 +143,7 @@ export function ChatWidget() {
       onKeyDown={(event) => {
         if (event.key === 'Escape') setChatOpen(false)
       }}
-      className="pane fixed right-6 bottom-6 z-40 flex h-[580px] max-h-[calc(100vh-48px)] w-[420px] flex-col overflow-hidden border-frame bg-popover shadow-[0_28px_70px_-14px_rgb(40_20_10/0.45),0_4px_14px_-4px_rgb(40_20_10/0.18)] dark:shadow-[0_28px_70px_-14px_rgb(0_0_0/0.8)] animate-in fade-in-0 slide-in-from-bottom-2 duration-150"
+      className="pane fixed right-6 bottom-6 z-40 flex h-[580px] max-h-[calc(100vh-48px)] w-[420px] flex-col overflow-hidden border-frame bg-popover shadow-[0_28px_70px_-14px_rgb(30_50_65/0.45),0_4px_14px_-4px_rgb(30_50_65/0.18)] dark:shadow-[0_28px_70px_-14px_rgb(0_0_0/0.8)] animate-in fade-in-0 slide-in-from-bottom-2 duration-150"
     >
       <PaneHeader
         icon={<Logo className="size-4" />}

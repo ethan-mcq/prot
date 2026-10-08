@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path'
 import {
   PROMPT_HASH,
   reconcile,
+  removeVersion,
   renameVersion,
   saveVersion,
   seedLibrary,
@@ -31,7 +32,15 @@ function parseLibrary(raw: unknown): PromptLibrary | null {
     versions.push(version)
   }
   if (!versions.some((version) => version.hash === value.liveHash)) return null
-  return { versions, liveHash: value.liveHash }
+  // Files written before versions could be deleted have no retiredBuiltIns.
+  const retired = value.retiredBuiltIns ?? []
+  if (!Array.isArray(retired)) return null
+  const retiredBuiltIns: string[] = []
+  for (const hash of retired) {
+    if (typeof hash !== 'string' || !PROMPT_HASH.test(hash)) return null
+    retiredBuiltIns.push(hash)
+  }
+  return { versions, liveHash: value.liveHash, retiredBuiltIns }
 }
 
 function parseStored(raw: string): PromptLibrary | null {
@@ -66,6 +75,10 @@ export class PromptStore {
 
   async setLive(hash: string): Promise<PromptLibrary> {
     return (await this.update(async (lib) => ({ library: setLive(lib, hash) }))).library
+  }
+
+  async remove(hash: string): Promise<PromptLibrary> {
+    return (await this.update(async (lib) => ({ library: removeVersion(lib, hash) }))).library
   }
 
   // Changes run one after another so two quick edits never write from the same stale library.

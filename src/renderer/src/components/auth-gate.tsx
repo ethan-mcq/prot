@@ -11,7 +11,15 @@ import { errorMessage } from '@/lib/utils'
 
 type Pending = 'gh' | 'token' | null
 
-export function AuthGate({ error, onAuth }: { error: string | null; onAuth: (state: AuthState) => void }) {
+export function AuthGate({
+  error,
+  onAuth,
+  onHome
+}: {
+  error: string | null
+  onAuth: (state: AuthState) => void
+  onHome: () => void
+}) {
   const [token, setToken] = useState('')
   const [pending, setPending] = useState<Pending>(null)
   const [localError, setLocalError] = useState<string | null>(null)
@@ -37,7 +45,7 @@ export function AuthGate({ error, onAuth }: { error: string | null; onAuth: (sta
 
   return (
     <div className="flex h-full flex-col">
-      <TitleBar login={null} />
+      <TitleBar login={null} onHome={onHome} />
       <div className="surface mx-2 mb-2 flex flex-1 items-center justify-center px-6 pb-12">
         <div className="pane w-full max-w-[400px] overflow-hidden">
           <PaneHeader icon={<Logo className="size-4" />} title="prot" detail="sign in" />

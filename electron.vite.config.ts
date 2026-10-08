@@ -10,7 +10,8 @@ const CSP = [
   "default-src 'self'",
   "script-src 'self' 'wasm-unsafe-eval'",
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: https://*.githubusercontent.com",
+  "img-src 'self' data: https://*.githubusercontent.com prot-attachment:",
+  "media-src 'self' prot-attachment:",
   "font-src 'self' data:"
 ].join('; ')
 

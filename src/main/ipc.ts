@@ -1,11 +1,13 @@
 import { clipboard, ipcMain, shell } from 'electron'
 import { IPC } from '@shared/ipc'
+import type { AttachmentService } from './attachments'
 import type { AuthService } from './auth'
 import type { ChatService } from './chat'
 import type { CodeIndexService } from './code-index/service'
 import type { GuideService } from './guide-ai'
 import type { InboxPoller } from './poller'
 import type { PromptStore } from './prompt-store'
+import type { PullCache } from './pull-cache'
 import type { PullService } from './pulls'
 import type { SecretsStore } from './secrets'
 import type { SettingsStore } from './settings'
@@ -14,6 +16,7 @@ import {
   parseAnthropicKey,
   parseChatRequest,
   parseCommentId,
+  parseAttachmentUrl,
   parseHttpsUrl,
   parsePromptHash,
   parsePromptName,
@@ -30,6 +33,8 @@ export type Services = {
   poller: InboxPoller
   pulls: PullService
   guide: GuideService
+  attachments: AttachmentService
+  cache: PullCache
   code: CodeIndexService
   chat: ChatService
   settings: SettingsStore
@@ -38,7 +43,7 @@ export type Services = {
 }
 
 export function registerIpc(services: Services): void {
-  const { auth, poller, pulls, guide, code, chat, settings, secrets, prompts } = services
+  const { auth, poller, pulls, guide, attachments, cache, code, chat, settings, secrets, prompts } = services
 
   ipcMain.handle(IPC.authGet, () => auth.get())
   ipcMain.handle(IPC.authGh, () => auth.signInWithGh())
@@ -62,7 +67,7 @@ export function registerIpc(services: Services): void {
     const ref = parsePullRef(rawRef)
     const input = parseReviewInput(rawInput)
     await pulls.submitReview(ref, input)
-    await guide.reviewed(ref, input.event)
+    await cache.reviewed(ref, input)
   })
   ipcMain.handle(IPC.pullComment, (_event, ref: unknown, body: unknown) => {
     if (typeof body !== 'string' || body.trim() === '') throw new Error('Comment must not be empty')
@@ -71,6 +76,14 @@ export function registerIpc(services: Services): void {
   ipcMain.handle(IPC.pullReply, (_event, ref: unknown, commentId: unknown, body: unknown) =>
     pulls.reply(parsePullRef(ref), parseCommentId(commentId), parseReplyBody(body))
   )
+
+  ipcMain.handle(IPC.pullAttachments, (_event, ref: unknown) => attachments.list(parsePullRef(ref)))
+  ipcMain.handle(IPC.pullOpenAttachment, async (_event, rawRef: unknown, rawUrl: unknown) => {
+    const target = await attachments.openTarget(parsePullRef(rawRef), parseAttachmentUrl(rawUrl))
+    if ('url' in target) return shell.openExternal(parseHttpsUrl(target.url))
+    const failure = await shell.openPath(target.path)
+    if (failure !== '') throw new Error(failure)
+  })
 
   ipcMain.handle(IPC.guideStory, (_event, ref: unknown) => code.story(parsePullRef(ref)))
   ipcMain.handle(IPC.guideAi, (_event, ref: unknown, refresh: unknown) =>
@@ -96,6 +109,7 @@ export function registerIpc(services: Services): void {
     prompts.rename(parsePromptHash(hash), parsePromptName(name))
   )
   ipcMain.handle(IPC.promptsSetLive, (_event, hash: unknown) => prompts.setLive(parsePromptHash(hash)))
+  ipcMain.handle(IPC.promptsRemove, (_event, hash: unknown) => prompts.remove(parsePromptHash(hash)))
 
   ipcMain.handle(IPC.keysGet, async () => ({ anthropic: await secrets.hasAnthropicKey() }))
   ipcMain.handle(IPC.keysSetAnthropic, async (_event, key: unknown) => {

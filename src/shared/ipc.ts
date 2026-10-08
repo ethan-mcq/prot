@@ -1,4 +1,5 @@
 import type {
+  Attachment,
   AuthState,
   ChatEvent,
   ChatRequest,
@@ -35,6 +36,12 @@ export interface ProtApi {
     submitReview(ref: PullRef, input: ReviewInput): Promise<void>
     comment(ref: PullRef, body: string): Promise<void>
     reply(ref: PullRef, commentId: number, body: string): Promise<ReviewComment>
+    // Images, videos and files attached to the description and comments. Imports run in the background.
+    attachments(ref: PullRef): Promise<Attachment[]>
+    // Fires when an import for the PR settles; list again to see the result.
+    onAttachments(cb: (ref: PullRef) => void): () => void
+    // Opens a stored file with the system default app, or the original URL when it was not stored.
+    openAttachment(ref: PullRef, url: string): Promise<void>
   }
   guide: {
     story(ref: PullRef): Promise<Guide>
@@ -54,6 +61,7 @@ export interface ProtApi {
     save(text: string): Promise<{ library: PromptLibrary; version: PromptVersion }>
     rename(hash: string, name: string): Promise<PromptLibrary>
     setLive(hash: string): Promise<PromptLibrary>
+    remove(hash: string): Promise<PromptLibrary>
   }
   keys: {
     get(): Promise<KeysState>
@@ -79,6 +87,9 @@ export const IPC = {
   pullReview: 'pull:review',
   pullComment: 'pull:comment',
   pullReply: 'pull:reply',
+  pullAttachments: 'pull:attachments',
+  pullAttachmentsChanged: 'pull:attachments-changed',
+  pullOpenAttachment: 'pull:open-attachment',
   guideStory: 'guide:story',
   guideAi: 'guide:ai',
   aiChat: 'ai:chat',
@@ -90,6 +101,7 @@ export const IPC = {
   promptsSave: 'prompts:save',
   promptsRename: 'prompts:rename',
   promptsSetLive: 'prompts:set-live',
+  promptsRemove: 'prompts:remove',
   keysGet: 'keys:get',
   keysSetAnthropic: 'keys:set-anthropic',
   openExternal: 'open-external',

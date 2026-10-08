@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { FileText, Loader2, Pencil, X } from 'lucide-react'
+import { FileText, Loader2, Pencil, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   displayName,
@@ -42,6 +42,7 @@ function PromptEditor({ onClose }: { onClose: () => void }) {
   const [renaming, setRenaming] = useState(false)
   const [saving, setSaving] = useState(false)
   const [pending, setPending] = useState<(() => void) | null>(null)
+  const [deleting, setDeleting] = useState<PromptVersion | null>(null)
   const draftHash = useHash(draft)
   const normalized = normalizePrompt(draft)
   const dirty = normalized !== selected.text
@@ -79,6 +80,17 @@ function PromptEditor({ onClose }: { onClose: () => void }) {
       setPrompts(await change())
     } catch (error) {
       toast.error(failure, { description: errorMessage(error) })
+    }
+  }
+
+  async function remove(version: PromptVersion) {
+    try {
+      const library = await window.prot.prompts.remove(version.hash)
+      setPrompts(library)
+      if (version.hash === selected.hash) select(livePrompt(library))
+      toast.success(`Deleted ${displayName(version)}`)
+    } catch (error) {
+      toast.error('Could not delete the prompt', { description: errorMessage(error) })
     }
   }
 
@@ -147,6 +159,7 @@ function PromptEditor({ onClose }: { onClose: () => void }) {
               selected={version.hash === selected.hash}
               live={version.hash === prompts.liveHash}
               onSelect={() => version.hash !== selected.hash && guard(() => select(version))}
+              onDelete={() => setDeleting(version)}
             />
           ))}
         </div>
@@ -200,13 +213,30 @@ function PromptEditor({ onClose }: { onClose: () => void }) {
           </div>
         </div>
       </div>
-      <DiscardDialog
+      <ConfirmDialog
         open={pending !== null}
+        title="Discard your edits?"
+        description="The prompt text has changes that are not saved as a version."
+        keep="Keep editing"
+        confirm="Discard"
         onKeep={() => setPending(null)}
-        onDiscard={() => {
+        onConfirm={() => {
           const action = pending
           setPending(null)
           action?.()
+        }}
+      />
+      <ConfirmDialog
+        open={deleting !== null}
+        title="Delete this prompt version?"
+        description="Guides already written with it keep working."
+        keep="Cancel"
+        confirm="Delete"
+        onKeep={() => setDeleting(null)}
+        onConfirm={() => {
+          const version = deleting
+          setDeleting(null)
+          if (version !== null) void remove(version)
         }}
       />
     </DialogContent>
@@ -217,12 +247,14 @@ function VersionRow({
   version,
   selected,
   live,
-  onSelect
+  onSelect,
+  onDelete
 }: {
   version: PromptVersion
   selected: boolean
   live: boolean
   onSelect: () => void
+  onDelete: () => void
 }) {
   return (
     <div
@@ -240,6 +272,18 @@ function VersionRow({
           {displayName(version)}
         </span>
         {live && <LiveBadge />}
+        <PaneButton
+          aria-label={`Delete ${displayName(version)}`}
+          title={live ? 'Make another version live first' : 'Delete this version'}
+          disabled={live}
+          onClick={(event) => {
+            event.stopPropagation()
+            onDelete()
+          }}
+          className="-my-1 size-5 hover:text-destructive"
+        >
+          <Trash2 />
+        </PaneButton>
       </div>
       <div className="mt-0.5 flex items-center gap-1.5 pl-3 font-mono text-[10.5px] text-muted-foreground">
         {version.name !== null && <span>{version.hash}</span>}
@@ -285,20 +329,36 @@ function NameField({ version, onDone }: { version: PromptVersion; onDone: (name:
   )
 }
 
-function DiscardDialog({ open, onKeep, onDiscard }: { open: boolean; onKeep: () => void; onDiscard: () => void }) {
+function ConfirmDialog({
+  open,
+  title,
+  description,
+  keep,
+  confirm,
+  onKeep,
+  onConfirm
+}: {
+  open: boolean
+  title: string
+  description: string
+  keep: string
+  confirm: string
+  onKeep: () => void
+  onConfirm: () => void
+}) {
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onKeep()}>
       <DialogContent showCloseButton={false} className="gap-4 p-5 sm:max-w-sm">
         <DialogHeader className="gap-1">
-          <DialogTitle className="text-[15px] font-medium">Discard your edits?</DialogTitle>
-          <DialogDescription className="font-mono text-[11.5px]">The prompt text has changes that are not saved as a version.</DialogDescription>
+          <DialogTitle className="text-[15px] font-medium">{title}</DialogTitle>
+          <DialogDescription className="font-mono text-[11.5px]">{description}</DialogDescription>
         </DialogHeader>
         <DialogFooter>
           <Button variant="ghost" size="sm" onClick={onKeep}>
-            Keep editing
+            {keep}
           </Button>
-          <Button variant="destructive" size="sm" onClick={onDiscard}>
-            Discard
+          <Button variant="destructive" size="sm" onClick={onConfirm}>
+            {confirm}
           </Button>
         </DialogFooter>
       </DialogContent>

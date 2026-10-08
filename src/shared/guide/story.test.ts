@@ -109,13 +109,6 @@ describe('buildStoryGuide on the Capy share PR', () => {
       'ShareInbox is new and calls useSharedItems and ShareSheet; 1 helper, 3 data types, 1 test.',
       'Tests that reference nothing else in this story: formats today.'
     ])
-    expect(guide.overview.points).toEqual([
-      'takeShare enters through MainActivity.onNewIntent (16 cards)',
-      'normalizeText enters through appendMessage (3 cards)',
-      'New ShareInbox and what it calls (13 cards)',
-      'Other tests (2 cards)',
-      'Config (1 file)'
-    ])
   })
 
   it('shows every changed symbol as a full card exactly once and puts every changed file in a chapter', () => {

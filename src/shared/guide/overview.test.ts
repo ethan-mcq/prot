@@ -49,13 +49,12 @@ describe('estimated risk', () => {
 })
 
 describe('synopsis', () => {
-  it('describes the code, never the PR description', () => {
+  it('is one sentence that describes the code, never the PR description', () => {
     const story = buildStoryGuide(capyStoryPull, capyStoryIndex).overview.synopsis
     const quick = buildHeuristicGuide(capySharePull).overview.synopsis
     expect({ story, quick }).toEqual({
-      story:
-        'It adds 18 symbols and changes 2 across 4 sections. The story runs: takeShare enters through MainActivity.onNewIntent, normalizeText enters through appendMessage and new ShareInbox and what it calls. 1 file-level chapter covers config, docs and other files outside the code.',
-      quick: 'It changes 13 files (+165 -2) in 8 chapters. Most of the change is capy share module in modules/capy-share.'
+      story: 'It adds 18 symbols and changes 2 across 4 sections, entered through MainActivity.onNewIntent.',
+      quick: 'It changes 13 files (+165 -2) in 8 chapters, mostly capy share module in modules/capy-share.'
     })
   })
 })

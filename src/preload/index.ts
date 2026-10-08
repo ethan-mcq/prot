@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import { IPC, type ProtApi } from '@shared/ipc'
-import type { ChatEvent, InboxState } from '@shared/types'
+import type { ChatEvent, InboxState, PullRef } from '@shared/types'
 
 function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
   const listener = (_event: IpcRendererEvent, payload: T) => cb(payload)
@@ -28,7 +28,10 @@ const api: ProtApi = {
     tree: (ref, sha) => ipcRenderer.invoke(IPC.pullTree, ref, sha),
     submitReview: (ref, input) => ipcRenderer.invoke(IPC.pullReview, ref, input),
     comment: (ref, body) => ipcRenderer.invoke(IPC.pullComment, ref, body),
-    reply: (ref, commentId, body) => ipcRenderer.invoke(IPC.pullReply, ref, commentId, body)
+    reply: (ref, commentId, body) => ipcRenderer.invoke(IPC.pullReply, ref, commentId, body),
+    attachments: (ref) => ipcRenderer.invoke(IPC.pullAttachments, ref),
+    onAttachments: (cb) => subscribe<PullRef>(IPC.pullAttachmentsChanged, cb),
+    openAttachment: (ref, url) => ipcRenderer.invoke(IPC.pullOpenAttachment, ref, url)
   },
   guide: {
     story: (ref) => ipcRenderer.invoke(IPC.guideStory, ref),
@@ -47,7 +50,8 @@ const api: ProtApi = {
     get: () => ipcRenderer.invoke(IPC.promptsGet),
     save: (text) => ipcRenderer.invoke(IPC.promptsSave, text),
     rename: (hash, name) => ipcRenderer.invoke(IPC.promptsRename, hash, name),
-    setLive: (hash) => ipcRenderer.invoke(IPC.promptsSetLive, hash)
+    setLive: (hash) => ipcRenderer.invoke(IPC.promptsSetLive, hash),
+    remove: (hash) => ipcRenderer.invoke(IPC.promptsRemove, hash)
   },
   keys: {
     get: () => ipcRenderer.invoke(IPC.keysGet),

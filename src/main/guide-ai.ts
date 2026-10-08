@@ -1,11 +1,12 @@
 import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { livePrompt } from '@shared/prompts'
-import { pullKey, type Guide, type PullDetail, type PullRef, type PullState, type ReviewEvent } from '@shared/types'
+import { pullKey, type Guide, type PullDetail, type PullRef } from '@shared/types'
 import { GUIDE_SCHEMA, buildGuidePrompt, buildStoryGuide, parseAiGuide } from '@shared/guide'
 import { createClient, describeAiError, modelParams, refusalMessage } from './claude'
 import type { CodeIndexService } from './code-index/service'
 import type { PromptStore } from './prompt-store'
+import { cacheName, parseCacheName } from './pull-cache'
 import type { PullService } from './pulls'
 import type { SecretsStore } from './secrets'
 import type { SettingsStore } from './settings'
@@ -13,21 +14,8 @@ import type { SettingsStore } from './settings'
 const GUIDE_MAX_TOKENS = 32_000
 
 function cacheFileName(ref: PullRef): string {
-  return `${ref.owner}__${ref.repo}__${ref.number}.json`
+  return `${cacheName(ref)}.json`
 }
-
-// Owners cannot contain underscores but repos can, so the repo is whatever sits between the first and last `__`.
-function cachedRef(name: string): PullRef | null {
-  const match = /^([^_]+)__(.+)__(\d+)\.json$/.exec(name)
-  if (!match) return null
-  return { owner: match[1] as string, repo: match[2] as string, number: Number(match[3]) }
-}
-
-// Approving or requesting changes finishes a review; a comment does not.
-const FINISHES_REVIEW: Record<ReviewEvent, boolean> = { APPROVE: true, REQUEST_CHANGES: true, COMMENT: false }
-
-// Null means GitHub says the pull is gone. A pull left out of the map could not be checked and keeps its guide.
-export type PullStateLookup = (refs: PullRef[]) => Promise<Map<string, PullState | null>>
 
 type CachedGuide = Omit<Extract<Guide, { source: 'ai' }>, 'questions' | 'promptHash'> & { questions?: unknown; promptHash?: unknown }
 
@@ -70,10 +58,6 @@ export class GuideService {
     return next
   }
 
-  async reviewed(ref: PullRef, event: ReviewEvent): Promise<void> {
-    if (FINISHES_REVIEW[event]) await this.forget(ref)
-  }
-
   async forget(ref: PullRef): Promise<void> {
     const key = pullKey(ref)
     this.generations.set(key, this.generation(ref) + 1)
@@ -82,26 +66,19 @@ export class GuideService {
     await rm(join(this.cacheDir, cacheFileName(ref)), { force: true })
   }
 
-  // Deletes guides whose PR is merged, closed or gone. A lookup that throws deletes nothing.
-  async sweep(lookup: PullStateLookup): Promise<void> {
+  async cachedRefs(): Promise<PullRef[]> {
     let names: string[]
     try {
       names = await readdir(this.cacheDir)
     } catch {
-      return
+      return []
     }
     const refs: PullRef[] = []
     for (const name of names) {
-      const ref = cachedRef(name)
+      const ref = name.endsWith('.json') ? parseCacheName(name.slice(0, -'.json'.length)) : null
       if (ref) refs.push(ref)
     }
-    if (refs.length === 0) return
-    const states = await lookup(refs)
-    for (const ref of refs) {
-      const state = states.get(pullKey(ref))
-      if (state === undefined || state === 'open') continue
-      await this.forget(ref)
-    }
+    return refs
   }
 
   private generation(ref: PullRef): number {

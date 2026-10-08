@@ -30,7 +30,7 @@ Return JSON with five parts.
 
 overview.risk: level is "low", "medium" or "high". Decide it from the code: the blast radius (how many callers and sections the change touches), data, schema or migration changes, auth or security paths, concurrency and shared state, deleted or changed public functions, and whether each section has tests for its changed symbols. reason is one sentence naming the concrete thing that drives the risk, such as what could break or which callers or data are affected.
 
-overview.synopsis: 3 to 4 plain sentences on what the change does and what it is for, inferred from the code. overview.points: one short line per section, in reading order. The interface numbers them.
+overview.synopsis: exactly one plain sentence saying what the code is or does, inferred from the code. The interface shows it directly under the risk.
 
 caption: one plain sentence naming what the story map shows, such as "How a shared item reaches a thread".
 
@@ -53,8 +53,7 @@ const section = strictObject({ title: stringType, summary: stringType })
 export const GUIDE_SCHEMA: Record<string, unknown> = strictObject({
   overview: strictObject({
     risk: strictObject({ level: { type: 'string', enum: [...RISK_LEVELS] }, reason: stringType }),
-    synopsis: stringType,
-    points: { type: 'array', items: stringType }
+    synopsis: stringType
   }),
   caption: stringType,
   sections: {
@@ -181,21 +180,21 @@ function list(value: unknown): unknown[] {
   return Array.isArray(value) ? value : []
 }
 
+// The model sometimes writes several sentences; the overview shows only the first.
+export function firstSentence(text: string): string {
+  const end = /[.!?](?=\s+["'(`A-Z])/.exec(text)
+  return end === null ? text : text.slice(0, end.index + 1)
+}
+
 function parseOverview(raw: Record<string, unknown>, fallback: GuideOverview): GuideOverview {
   const synopsis = text(raw.synopsis)
   if (synopsis === null) throw new Error('AI guide is missing overview.synopsis')
   const risk = isRecord(raw.risk) ? raw.risk : {}
   const level = RISK_LEVELS.find((candidate) => candidate === risk.level)
   const reason = text(risk.reason)
-  const points: string[] = []
-  for (const point of list(raw.points)) {
-    const line = text(point)
-    if (line !== null) points.push(line)
-  }
   return {
     risk: level !== undefined && reason !== null ? { level, reason } : fallback.risk,
-    synopsis,
-    points
+    synopsis: firstSentence(synopsis)
   }
 }
 

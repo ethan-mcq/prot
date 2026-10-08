@@ -1,4 +1,5 @@
 import { PROMPT_HASH, PROMPT_NAME_MAX, PROMPT_TEXT_MAX } from '@shared/prompts'
+import { RISK_LEVELS } from '@shared/types'
 import type {
   CardContext,
   CardRole,
@@ -7,6 +8,7 @@ import type {
   LineRange,
   SectionContext,
   StoryCard,
+  StoryContext,
   SymbolKind,
   ChatRequest,
   DiffSide,
@@ -188,6 +190,24 @@ function parseSection(raw: unknown): SectionContext {
   return { cards: list(value.cards, 'section cards').map(parseCardContext), focused }
 }
 
+function parseStory(raw: unknown): StoryContext {
+  const value = obj(raw, 'story')
+  const risk = obj(value.risk, 'story risk')
+  const sections = list(value.sections, 'story sections').map((section) => {
+    const fields = obj(section, 'story section')
+    return {
+      title: str(fields.title, 'story section title'),
+      cards: list(fields.cards, 'story section cards').map(parseCardContext),
+      files: list(fields.files, 'story section files').map((file) => str(file, 'story section file'))
+    }
+  })
+  return {
+    risk: { level: oneOf(risk.level, RISK_LEVELS, 'risk level'), reason: str(risk.reason, 'risk reason') },
+    synopsis: str(value.synopsis, 'story synopsis'),
+    sections
+  }
+}
+
 function parseFlow(raw: unknown): NonNullable<ViewContext['flow']> {
   const value = obj(raw, 'flow')
   const nodes = list(value.nodes, 'flow nodes').map((node) => {
@@ -242,6 +262,7 @@ function parseViewContext(raw: unknown): ViewContext {
   }
   return {
     pull,
+    story: value.story === null ? null : parseStory(value.story),
     step: value.step === null ? null : parseStep(value.step),
     chapter: value.chapter === null ? null : parseChapter(value.chapter),
     flow: value.flow === null ? null : parseFlow(value.flow),
@@ -273,6 +294,12 @@ export function parseHttpsUrl(raw: unknown): string {
   }
   if (url.protocol !== 'https:') throw new Error('Only https links can be opened')
   return url.href
+}
+
+export function parseAttachmentUrl(raw: unknown): string {
+  const text = str(raw, 'attachment url')
+  if (!URL.canParse(text)) throw new Error('Invalid attachment URL')
+  return text
 }
 
 export function parseToken(raw: unknown): string {

@@ -92,7 +92,11 @@ export function assessRisk(input: RiskInput): GuideOverview['risk'] {
   return { level: 'low', reason: `${plural(total, 'changed line')}, no schema change, and tests sit beside the core code.` }
 }
 
-function codeSynopsis(input: RiskInput): string[] {
+function lowerFirst(text: string): string {
+  return text.charAt(0).toLowerCase() + text.slice(1)
+}
+
+function codeSynopsis(input: RiskInput): string {
   const story = input.chapters.filter((chapter) => chapter.cards.length > 0)
   const counts = { added: 0, modified: 0, deleted: 0 }
   for (const symbol of Object.values(input.symbols)) {
@@ -104,28 +108,20 @@ function codeSynopsis(input: RiskInput): string[] {
   if (counts.modified > 0) parts.push(`changes ${counts.modified}`)
   if (counts.deleted > 0) parts.push(`removes ${counts.deleted}`)
   const what = parts.length > 0 ? joinWords(parts) : 'changes only tests and module-level code'
-  const sentences = [`It ${what} across ${plural(story.length, 'section')}.`]
-  const roots = story.slice(0, 3).map((chapter) => chapter.title.charAt(0).toLowerCase() + chapter.title.slice(1))
-  if (roots.length > 0) sentences.push(`The story runs: ${joinWords(roots)}.`)
-  const rest = input.chapters.length - story.length
-  if (rest > 0) sentences.push(`${plural(rest, 'file-level chapter')} ${rest === 1 ? 'covers' : 'cover'} config, docs and other files outside the code.`)
-  return sentences
+  const entryId = story[0]?.cards[0]?.symbolId
+  const entry = entryId === undefined ? undefined : input.symbols[entryId]
+  const through = entry === undefined ? '' : `, entered through ${entry.qualifiedName}`
+  return `It ${what} across ${plural(story.length, 'section')}${through}.`
 }
 
-function fileSynopsis(input: RiskInput, detail: PullDetail): string[] {
+function fileSynopsis(input: RiskInput, detail: PullDetail): string {
   const first = input.chapters[0]
-  const sentences = [`It changes ${plural(detail.files.length, 'file')} (+${detail.additions} -${detail.deletions}) in ${plural(input.chapters.length, 'chapter')}.`]
-  if (first !== undefined) sentences.push(`Most of the change is ${first.title.charAt(0).toLowerCase()}${first.title.slice(1)}.`)
-  return sentences
-}
-
-function point(chapter: Chapter): string {
-  if (chapter.cards.length === 0) return `${chapter.title} (${plural(chapter.files.length, 'file')})`
-  return `${chapter.title} (${plural(chapter.cards.filter((card) => card.seeChapterId === null).length, 'card')})`
+  const most = first === undefined ? '' : `, mostly ${lowerFirst(first.title)}`
+  return `It changes ${plural(detail.files.length, 'file')} (+${detail.additions} -${detail.deletions}) in ${plural(input.chapters.length, 'chapter')}${most}.`
 }
 
 export function overviewFor(detail: PullDetail, chapters: Chapter[], symbols: Record<string, CodeSymbol>): GuideOverview {
   const input: RiskInput = { files: reviewFiles(detail.files), chapters, symbols }
   const synopsis = Object.keys(symbols).length > 0 ? codeSynopsis(input) : fileSynopsis(input, detail)
-  return { risk: assessRisk(input), synopsis: synopsis.join(' '), points: chapters.map(point) }
+  return { risk: assessRisk(input), synopsis }
 }

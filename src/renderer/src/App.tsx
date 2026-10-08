@@ -8,6 +8,7 @@ import { Toaster } from '@/components/ui/sonner'
 import { AuthGate } from '@/components/auth-gate'
 import { ChatWidget } from '@/components/chat-widget'
 import { Logo } from '@/components/logo'
+import { Home } from '@/components/home'
 import { DashedFrame, PaneHeader } from '@/components/pane'
 import { PullView } from '@/components/pull-view'
 import { Sidebar } from '@/components/sidebar'
@@ -28,16 +29,36 @@ export function App() {
 function Root() {
   const { resolvedTheme } = usePrefs()
   const [auth, setAuth] = useState<AuthState | null>(null)
+  const [screen, setScreen] = useState<'home' | 'review'>('home')
+  const [selected, setSelected] = useState<PullRef | null>(null)
+  const goHome = () => setScreen('home')
 
   useEffect(() => {
     window.prot.auth.get().then(setAuth)
   }, [])
 
+  function signOut() {
+    void window.prot.auth.signOut().then((state) => {
+      setSelected(null)
+      setAuth(state)
+    })
+  }
+
   return (
     <>
-      {auth?.status === 'signed_out' && <AuthGate error={auth.error} onAuth={setAuth} />}
-      {auth?.status === 'signed_in' && (
-        <Shell key={auth.user.login} user={auth.user} onSignOut={() => void window.prot.auth.signOut().then(setAuth)} />
+      {screen === 'home' && (
+        <Home login={auth?.status === 'signed_in' ? auth.user.login : null} onReview={() => setScreen('review')} />
+      )}
+      {screen === 'review' && auth?.status === 'signed_out' && <AuthGate error={auth.error} onAuth={setAuth} onHome={goHome} />}
+      {screen === 'review' && auth?.status === 'signed_in' && (
+        <Shell
+          key={auth.user.login}
+          user={auth.user}
+          selected={selected}
+          onSelect={setSelected}
+          onHome={goHome}
+          onSignOut={signOut}
+        />
       )}
       <Toaster theme={resolvedTheme} position="bottom-center" />
     </>
@@ -72,9 +93,20 @@ function useInbox() {
   return { inbox, refreshing, refresh }
 }
 
-function Shell({ user, onSignOut }: { user: GitHubUser; onSignOut: () => void }) {
+function Shell({
+  user,
+  selected,
+  onSelect,
+  onHome,
+  onSignOut
+}: {
+  user: GitHubUser
+  selected: PullRef | null
+  onSelect: (ref: PullRef) => void
+  onHome: () => void
+  onSignOut: () => void
+}) {
   const { inbox, refreshing, refresh } = useInbox()
-  const [selected, setSelected] = useState<PullRef | null>(null)
   const [titleSlot, setTitleSlot] = useState<HTMLElement | null>(null)
   const reviewCount = inbox?.pulls.filter((pull) => pull.bucket === 'review').length ?? 0
 
@@ -84,14 +116,14 @@ function Shell({ user, onSignOut }: { user: GitHubUser; onSignOut: () => void })
     <ViewProvider>
       <TitleBarSlotProvider value={titleSlot}>
         <div className="flex h-full flex-col">
-          <TitleBar login={user.login} slotRef={setTitleSlot} />
+          <TitleBar login={user.login} onHome={onHome} slotRef={setTitleSlot} />
           <div className="surface mx-2 mb-2 flex min-h-0 flex-1 gap-2 p-2">
             <Sidebar
               inbox={inbox}
               refreshing={refreshing}
               onRefresh={() => void refresh()}
               selected={selected ? pullKey(selected) : null}
-              onSelect={setSelected}
+              onSelect={onSelect}
               fallbackRepo={fallbackRepo(selected, inbox?.pulls ?? [])}
               user={user}
               onSignOut={onSignOut}

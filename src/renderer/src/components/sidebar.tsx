@@ -182,7 +182,6 @@ function Stack({ unit, collapse, ...row }: { unit: InboxUnit; collapse: Collapse
         <ChevronRight aria-hidden className={cn('size-3 transition-transform', expanded && 'rotate-90')} />
         <GitBranch aria-hidden className="size-3" />
         {label}
-        {!expanded && <span className="text-foreground">+{unit.members.length - 1}</span>}
       </button>
       <ul className="ml-2.5 space-y-px border-l border-frame">
         {members.map((member) => (

@@ -53,6 +53,21 @@ describe('PromptStore', () => {
     expect(summary(JSON.parse(readFileSync(file, 'utf8')))).toEqual(summary(upgraded))
   })
 
+  it('keeps a deleted version deleted across a restart, including a built-in the shipped prompt still matches', async () => {
+    const file = tempFile()
+    const store = new PromptStore(file, SHIPPED)
+    const { version } = await store.save('Review risk first.')
+    await store.setLive(version.hash)
+    const removed = await store.remove('d1a090fa9228')
+
+    const reopened = await new PromptStore(file, SHIPPED).get()
+    expect({ removed: summary(removed), reopened: summary(reopened), retired: reopened.retiredBuiltIns }).toEqual({
+      removed: { liveHash: 'e40065d9dff0', versions: ['e40065d9dff0 - saved'] },
+      reopened: { liveHash: 'e40065d9dff0', versions: ['e40065d9dff0 - saved'] },
+      retired: ['d1a090fa9228']
+    })
+  })
+
   it.each([
     ['unparseable JSON', '{"versions": ['],
     ['a live hash with no version', JSON.stringify({ versions: [], liveHash: 'd1a090fa9228' })]

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ChevronRight, GitCompare, ScrollText } from 'lucide-react'
 import { toast } from 'sonner'
 import type { ChangedFile, Guide, RiskLevel } from '@shared/types'
+import { AttachmentsRow } from '@/components/attachments'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { FileTree } from '@/components/file-tree'
@@ -19,8 +20,6 @@ export function guideOrder(guide: Guide, files: ChangedFile[]): ChangedFile[] {
   })
   return [...files].sort((a, b) => (rank.get(a.path) ?? Infinity) - (rank.get(b.path) ?? Infinity))
 }
-
-const POINT_COUNT = /^(.*?)\s*\((\d+ (?:files?|cards?))\)$/
 
 const RISK_TONE: Record<RiskLevel, { label: string; className: string }> = {
   high: { label: 'High', className: 'border-removed/40 bg-removed-bg text-removed' },
@@ -59,27 +58,11 @@ export function OverviewStep() {
         <div className="scroll-quiet min-h-0 flex-1 overflow-y-auto px-5 pt-2 pb-6 font-mono text-[12.5px] leading-[1.7]">
           <div className="max-w-[720px] space-y-6">
             <h2 className="text-[16px] font-semibold text-foreground">Overview</h2>
-            <RiskLine />
-            <section className="space-y-2">
-              <h3 className="font-semibold">Synopsis</h3>
+            <div className="space-y-2">
+              <RiskLine />
               <p className="font-copy text-[13px] leading-[1.75] text-foreground/85">{overview.synopsis}</p>
-            </section>
-            {overview.points.length > 0 && (
-              <ul className="space-y-1.5">
-                {overview.points.map((point, i) => {
-                  const [, text, count] = POINT_COUNT.exec(point) ?? [point, point, null]
-                  return (
-                    <li key={i} className="flex gap-2.5">
-                      <span aria-hidden className="text-muted-foreground">•</span>
-                      <div className="min-w-0">
-                        <Markdown className="text-[12.5px] leading-[1.7]">{text ?? point}</Markdown>
-                        {count && <p className="text-muted-foreground">└ {count}</p>}
-                      </div>
-                    </li>
-                  )
-                })}
-              </ul>
-            )}
+            </div>
+            <AttachmentsRow />
             <details className="group space-y-2">
               <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 font-semibold select-none [&::-webkit-details-marker]:hidden">
                 <ChevronRight aria-hidden className="size-3.5 text-muted-foreground transition-transform group-open:rotate-90" />

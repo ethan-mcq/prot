@@ -4,6 +4,7 @@ import { expect, test, type Locator } from '@playwright/test'
 import { aiGuide, CHAT_REPLY, TEST_TOKEN } from '../fixtures/servers'
 import { inbox, otherPull, pull } from '../fixtures/share-pr'
 import { toolsPulls } from '../fixtures/tools-pr'
+import { openPrReview, signIn } from './flows'
 import { launch, type Harness } from './launch'
 
 const SHOTS = process.env.PROT_SHOTS
@@ -28,27 +29,45 @@ async function settle() {
   )
 }
 
-async function signIn() {
-  const { page } = h
-  await page.getByLabel('Personal access token').fill(TEST_TOKEN)
-  await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.getByRole('region', { name: 'Needs your review' })).toBeVisible()
-}
-
 async function openSharePull() {
   await h.page.getByRole('button', { name: new RegExp(`${pull.owner}/${pull.repo}#${pull.number}`) }).click()
   await expect(h.page.getByRole('heading', { name: pull.title })).toBeVisible()
 }
 
-test('signs in, badges the dock, and walks the guide from a risk-first overview through the story map into sections', async () => {
+test('opens on home, signs in, badges the dock, and walks the guide from a risk-first overview through the story map into sections', async () => {
   const { page, app } = h
-  await shot('01-sign-in')
-  await signIn()
+  const prReview = page.getByRole('button', { name: 'PR Review', exact: true })
+  const agentDash = page.getByRole('button', { name: 'Agent dash', exact: true })
+  const tokenField = page.getByLabel('Personal access token')
+  const badge = () => app.evaluate(({ app }) => app.dock?.getBadge())
+  await expect(prReview).toBeVisible()
+  await expect(agentDash).toHaveAttribute('aria-disabled', 'true')
+  await expect(agentDash).toContainText('Under development')
+  await expect(agentDash).toContainText('Coming soon')
+  await settle()
+  await shot('00-home')
+  await agentDash.click({ force: true })
+  await expect(prReview).toBeVisible()
+  await expect(tokenField).toHaveCount(0)
 
-  await expect.poll(() => app.evaluate(({ app }) => app.dock?.getBadge())).toBe('2')
+  await openPrReview(page)
+  await expect(tokenField).toBeVisible()
+  await shot('01-sign-in')
+  await tokenField.fill(TEST_TOKEN)
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await expect(page.getByRole('region', { name: 'Needs your review' })).toBeVisible()
+
+  await expect.poll(badge).toBe('2')
   await expect(page.getByRole('region', { name: 'Your pull requests' })).toContainText('Add dark theme polish')
 
   await openSharePull()
+  await page.getByRole('button', { name: 'Home', exact: true }).click()
+  await expect(prReview).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Needs your review' })).toHaveCount(0)
+  expect(await badge()).toBe('2')
+  await openPrReview(page)
+  await expect(page.getByRole('heading', { name: pull.title })).toBeVisible()
+  await expect(page.getByRole('button', { name: `${pull.owner}/${pull.repo}#${pull.number} ${pull.title}` })).toHaveAttribute('aria-current', 'page')
   await expect(page.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByRole('tabpanel')).toContainText('packages/mobile/plugins')
   const risk = page.getByRole('region', { name: 'Risk' })
@@ -56,7 +75,7 @@ test('signs in, badges the dock, and walks the guide from a risk-first overview 
   await expect(risk).toContainText('estimated')
   const description = page.getByText('This PR adds mobile sharing so external content can be staged')
   await expect(description).toBeHidden()
-  await expect(page.getByRole('tabpanel')).toContainText('takeShare enters through MainActivity.onNewIntent')
+  await expect(page.getByRole('tabpanel')).toContainText('entered through MainActivity.onNewIntent')
   await shot('02-overview')
   await page.getByText('Description', { exact: true }).click()
   await expect(description).toBeVisible()
@@ -68,6 +87,16 @@ test('signs in, badges the dock, and walks the guide from a risk-first overview 
   await shot('03-story-map')
 
   await takeShare.click()
+  const ide = page.getByRole('region', { name: 'IDE' })
+  const focused = ide.locator('[aria-current="true"]')
+  await expect(focused).toContainText('fun takeShare(')
+  await expect(focused).toBeInViewport()
+  await settle()
+  await shot('03b-story-map-node-enlarged')
+  await page.keyboard.press('Escape')
+  await expect(ide).toBeHidden()
+
+  await page.getByRole('tabpanel').getByRole('button', { name: /^01\s*takeShare enters through MainActivity\.onNewIntent/ }).click()
   await expect(page.getByRole('tab', { name: /takeShare enters through MainActivity\.onNewIntent/ })).toHaveAttribute('aria-selected', 'true')
   const storyline = page.getByLabel('Storyline')
   const entry = storyline.getByRole('region').first()
@@ -75,10 +104,7 @@ test('signs in, badges the dock, and walks the guide from a risk-first overview 
   await expect(entry.locator('header')).toContainText('Entry')
   const card = page.getByRole('region', { name: 'CapyShareModule.takeShare', exact: true })
   await expect(card.locator('header')).toContainText('Added')
-  const focused = card.locator('[aria-current="true"]')
-  await expect(focused).toContainText('fun takeShare(')
-  await expect(focused).toBeInViewport()
-  await shot('04-section-focused-row')
+  await shot('04-section')
 
   const helper = page.getByRole('region', { name: 'CapyShareModule.stageItems', exact: true })
   await expect(helper).toContainText('fun stageItems(')
@@ -105,6 +131,22 @@ test('signs in, badges the dock, and walks the guide from a risk-first overview 
   await expect.poll(async () => Math.round(((await sendCard.locator('header').boundingBox())?.y ?? -1) - paneTop)).toBe(0)
   await expect(sendCard.locator('header')).toContainText('useShareSend')
   await shot('04d-sticky-header')
+
+  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.getByRole('radio', { name: 'Dark' }).click()
+  await page.keyboard.press('Escape')
+  await expect(page.locator('html')).toHaveClass(/dark/)
+  await page.getByRole('tab', { name: 'Story map' }).click()
+  await settle()
+  await shot('20-story-map-dark')
+  await page.getByRole('tab', { name: /takeShare enters through MainActivity\.onNewIntent/ }).click()
+  await settle()
+  await shot('21-section-dark')
+  await page.getByRole('button', { name: 'Home', exact: true }).click()
+  await expect(prReview).toBeVisible()
+  await expect(page.locator('html')).toHaveClass(/dark/)
+  await settle()
+  await shot('22-home-dark')
 })
 
 test('the inbox puts open PRs before drafts, keeps a stack together, collapses sections, and filters without moving the dock badge', async () => {
@@ -124,7 +166,7 @@ test('the inbox puts open PRs before drafts, keeps a stack together, collapses s
     'Drafts',
     card(inbox.draft)
   ]
-  await signIn()
+  await signIn(page)
   const review = page.getByRole('region', { name: 'Needs your review' })
   const mine = page.getByRole('region', { name: 'Your pull requests' })
 
@@ -133,6 +175,17 @@ test('the inbox puts open PRs before drafts, keeps a stack together, collapses s
   await expect(review.getByRole('button', { name: card(inbox.secondReviewer) })).toBeVisible()
   await expect.poll(badge).toBe('2')
   await shot('12-inbox-default')
+
+  const stack = mine.getByRole('group', { name: 'stack · 3' })
+  const stackHeader = stack.getByRole('button', { name: 'stack · 3' })
+  await stackHeader.click()
+  await expect(stackHeader).toHaveAttribute('aria-expanded', 'false')
+  await expect(stackHeader).toHaveText('stack · 3')
+  await expect.poll(() => buttonNames(stack)).toEqual(['stack · 3', card(a)])
+  await settle()
+  await shot('14b-stack-collapsed')
+  await stackHeader.click()
+  await expect.poll(() => buttonNames(stack)).toEqual(['stack · 3', card(a), card(b), card(c)])
 
   const mineHeader = mine.getByRole('button', { name: 'Your pull requests' })
   await mineHeader.click()
@@ -160,6 +213,7 @@ test('the inbox puts open PRs before drafts, keeps a stack together, collapses s
 
   await page.keyboard.press('Escape')
   await page.reload()
+  await openPrReview(page)
   await expect.poll(() => buttonNames(mine)).toEqual(['Your pull requests', card(c), card(a), card(b), card(otherPull)])
   await expect(review.getByRole('button', { name: card(inbox.secondReviewer) })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Filter pull requests' })).toContainText('4')
@@ -191,7 +245,7 @@ test('the inbox puts open PRs before drafts, keeps a stack together, collapses s
 
 test('expands into the IDE, browses the whole repo, and submits an approval with an inline comment', async () => {
   const { page, github } = h
-  await signIn()
+  await signIn(page)
   await openSharePull()
   await page.getByRole('tab', { name: /New ShareInbox/ }).click()
 
@@ -283,7 +337,7 @@ test('checks out PRs outside the inbox by link, keeps them across a reload, open
     await input.fill(text)
     await input.press('Enter')
   }
-  await signIn()
+  await signIn(page)
   await expect(manual).toHaveCount(0)
 
   await checkout('https://github.com/octo-labs/tools/pull/42/files')
@@ -299,6 +353,7 @@ test('checks out PRs outside the inbox by link, keeps them across a reload, open
   await shot('17-manual-section')
 
   await page.reload()
+  await openPrReview(page)
   await expect.poll(() => manual.getByRole('button', { name: /^octo-labs\/tools#/ }).evaluateAll((els) => els.map((el) => el.getAttribute('aria-label')))).toEqual([
     card(open),
     card(merged)
@@ -332,7 +387,7 @@ test('checks out PRs outside the inbox by link, keeps them across a reload, open
 
 test('chat widget takes an API key, swaps in the AI guide, and answers with the on-screen chapter and chosen effort', async () => {
   const { page, anthropic } = h
-  await signIn()
+  await signIn(page)
   await openSharePull()
 
   await page.getByRole('button', { name: 'Ask prot' }).click()
@@ -377,7 +432,7 @@ test('a push while reading flags the stale AI guide in place, reaches the new fi
   const { page, github, anthropic } = h
   const moduleKt = 'packages/mobile/modules/capy-share/android/src/main/java/ai/capy/share/CapyShareModule.kt'
   const guideRequests = () => anthropic.requests.filter((r) => JSON.stringify(r.body).includes('json_schema')).length
-  await signIn()
+  await signIn(page)
   await openSharePull()
 
   await page.getByRole('button', { name: 'Settings' }).click()
@@ -428,7 +483,7 @@ test('a saved, renamed review prompt made live is the system prompt the next AI 
     anthropic.requests
       .filter((r) => JSON.stringify(r.body).includes('json_schema'))
       .map((r) => (r.body as { system: string }).system)
-  await signIn()
+  await signIn(page)
   await openSharePull()
 
   await page.getByRole('button', { name: 'Settings' }).click()

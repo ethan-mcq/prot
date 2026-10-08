@@ -109,15 +109,6 @@ describe('buildHeuristicGuide', () => {
     ])
   })
 
-  it('lists one overview point per chapter with its file count', () => {
-    const { overview } = buildHeuristicGuide(capySharePull)
-    expect([overview.points.length, overview.points[0], overview.points[7]]).toEqual([
-      8,
-      'Capy share module in modules/capy-share (2 files)',
-      'Lockfiles (1 file)'
-    ])
-  })
-
   it('traces how the new symbols call each other, main path first', () => {
     const guide = buildHeuristicGuide(capySharePull)
     const { flow } = guide

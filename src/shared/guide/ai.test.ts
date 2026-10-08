@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ChangedFile, Guide } from '../types'
 import { capyStoryIndex, capyStoryPull, changed, pullWith, STORY } from './fixtures'
+import { firstSentence } from './ai'
 import { buildGuidePrompt, buildStoryGuide, GUIDE_SCHEMA, parseAiGuide } from './index'
 
 const story = buildStoryGuide(capyStoryPull, capyStoryIndex)
@@ -14,9 +15,21 @@ function outline(guide: Guide): string[] {
   })
 }
 
+describe('firstSentence', () => {
+  it.each([
+    ['Adds retries to the uploader. It also logs failures.', 'Adds retries to the uploader.'],
+    ['Moves parsing into parse.ts so the CLI and MainActivity.onNewIntent share it.', 'Moves parsing into parse.ts so the CLI and MainActivity.onNewIntent share it.'],
+    ['Bumps v1.2 to v1.3. Nothing else changes!', 'Bumps v1.2 to v1.3.'],
+    ['Does this break callers? "Yes" if they pass null.', 'Does this break callers?'],
+    ['One clause and no stop', 'One clause and no stop']
+  ])('%j keeps %j', (text, first) => {
+    expect(firstSentence(text)).toBe(first)
+  })
+})
+
 describe('parseAiGuide', () => {
   const raw = {
-    overview: { risk: { level: 'severe', reason: 'Made up.' }, synopsis: '  Shares items from other apps into a thread. ', points: ['Native intake', 42, ''] },
+    overview: { risk: { level: 'severe', reason: 'Made up.' }, synopsis: '  Shares items from other apps into a thread. It adds a native module. ' },
     caption: 'How a shared item reaches a thread',
     sections: [
       {
@@ -98,7 +111,7 @@ describe('parseAiGuide', () => {
       PROMPT_HASH
     ).overview
     expect({ unknown, known: known.risk }).toEqual({
-      unknown: { risk: story.overview.risk, synopsis: 'Shares items from other apps into a thread.', points: ['Native intake'] },
+      unknown: { risk: story.overview.risk, synopsis: 'Shares items from other apps into a thread.' },
       known: { level: 'high', reason: 'Every share now goes through takeShare.' }
     })
   })

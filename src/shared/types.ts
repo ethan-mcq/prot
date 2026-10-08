@@ -207,7 +207,6 @@ export type RiskLevel = (typeof RISK_LEVELS)[number]
 export type GuideOverview = {
   risk: { level: RiskLevel; reason: string }
   synopsis: string
-  points: string[]
 }
 
 type GuideContent = {
@@ -291,6 +290,7 @@ export type KeysState = { anthropic: boolean }
 
 export type ViewContext = {
   pull: { ref: PullRef; author: string } | null
+  story: StoryContext | null
   step: GuideStep | null
   chapter: Chapter | null
   flow: Flow | null
@@ -312,6 +312,14 @@ export type SectionContext = {
   focused: { qualifiedName: string; path: string; code: string } | null
 }
 
+export type OutlineSection = { title: string; cards: CardContext[]; files: string[] }
+
+export type StoryContext = {
+  risk: GuideOverview['risk']
+  synopsis: string
+  sections: OutlineSection[]
+}
+
 export type ChatMessage = { role: 'user' | 'assistant'; content: string }
 
 export type ChatRequest = {
@@ -324,3 +332,19 @@ export type ChatEvent =
   | { id: string; type: 'delta'; text: string }
   | { id: string; type: 'done' }
   | { id: string; type: 'error'; message: string }
+
+export type AttachmentKind = 'image' | 'video' | 'file'
+
+export type AttachmentStatus = 'importing' | 'ready' | 'link-only' | 'failed'
+
+export type Attachment = {
+  url: string
+  name: string
+  // "description" or "comment by <login>".
+  source: string
+  size: number | null
+  kind: AttachmentKind
+  status: AttachmentStatus
+  // A prot-attachment: URL for a ready image or video.
+  src: string | null
+}

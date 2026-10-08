@@ -15,7 +15,7 @@ function guideWith(chapterCount: number): Guide {
   return {
     source: 'heuristic',
     headSha: 'abc',
-    overview: { risk: { level: 'low', reason: '' }, synopsis: '', points: [] },
+    overview: { risk: { level: 'low', reason: '' }, synopsis: '' },
     questions: [],
     flow: { caption: '', nodes: [], edges: [] },
     chapters,
@@ -107,7 +107,7 @@ describe('a pull request update while reading', () => {
 
   it('keeps the AI guide, step and open IDE, and puts the uncovered file in a trailing chapter', () => {
     const raw = {
-      overview: { risk: { level: 'low', reason: 'Small.' }, synopsis: 'Shares text into a thread.', points: [] },
+      overview: { risk: { level: 'low', reason: 'Small.' }, synopsis: 'Shares text into a thread.' },
       caption: '',
       sections: [],
       files: [{ title: 'Native share module', summary: '', files: [KOTLIN_MODULE, SWIFT_MODULE] }]

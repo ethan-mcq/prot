@@ -4,6 +4,7 @@ import {
   livePrompt,
   promptHash,
   reconcile,
+  removeVersion,
   renameVersion,
   saveVersion,
   seedLibrary,
@@ -17,7 +18,8 @@ const LATER = '2026-10-07T12:00:00.000Z'
 
 const seeded: PromptLibrary = {
   versions: [{ hash: 'd1a090fa9228', name: 'built-in default', text: BUILT_IN, createdAt: SEEDED, builtIn: true }],
-  liveHash: 'd1a090fa9228'
+  liveHash: 'd1a090fa9228',
+  retiredBuiltIns: []
 }
 
 describe('seedLibrary and livePrompt', () => {
@@ -78,6 +80,7 @@ describe('unknown hashes', () => {
   it.each([
     ['renameVersion', () => renameVersion(seeded, 'aaaaaaaaaaaa', 'x')],
     ['setLive', () => setLive(seeded, 'aaaaaaaaaaaa')],
+    ['removeVersion', () => removeVersion(seeded, 'aaaaaaaaaaaa')],
     ['livePrompt', () => livePrompt({ ...seeded, liveHash: 'aaaaaaaaaaaa' })]
   ])('%s rejects a hash that is not in the library', (_case, call) => {
     expect(call).toThrow('No prompt version aaaaaaaaaaaa')
@@ -93,6 +96,33 @@ describe('setLive', () => {
       text: 'Review risk first.',
       versions: 2
     })
+  })
+})
+
+describe('removeVersion', () => {
+  it.each([
+    ['a saved version goes and nothing is retired', 'e40065d9dff0', ['d1a090fa9228', 'e6945cfbcd0b'], []],
+    ['a built-in version goes and is retired', 'e6945cfbcd0b', ['d1a090fa9228', 'e40065d9dff0'], ['e6945cfbcd0b']]
+  ])('%s', async (_case, hash, hashes, retired) => {
+    const saved = (await saveVersion(seeded, 'Review risk first.', LATER)).library
+    const lib = await reconcile(saved, 'You write guided code reviews, risk first.', LATER)
+    const removed = removeVersion(lib, hash)
+    expect({ hashes: removed.versions.map((v) => v.hash), retired: removed.retiredBuiltIns, liveHash: removed.liveHash }).toEqual({
+      hashes,
+      retired,
+      liveHash: 'd1a090fa9228'
+    })
+  })
+
+  it('rejects the live version', () => {
+    expect(() => removeVersion(seeded, 'd1a090fa9228')).toThrow('The live prompt cannot be deleted. Make another version live first.')
+  })
+
+  it('keeps a deleted built-in deleted when the same shipped prompt is reconciled again', async () => {
+    const custom = setLive((await saveVersion(seeded, 'Review risk first.', LATER)).library, 'e40065d9dff0')
+    const removed = removeVersion(custom, 'd1a090fa9228')
+    const reconciled = await reconcile(removed, BUILT_IN, '2026-10-09T00:00:00.000Z')
+    expect(reconciled.versions.map((v) => v.hash)).toEqual(['e40065d9dff0'])
   })
 })
 

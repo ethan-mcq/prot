@@ -1,5 +1,8 @@
 import { join } from 'node:path'
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, protocol } from 'electron'
+import { IPC } from '@shared/ipc'
+import { webOrigin } from './attachment-links'
+import { ATTACHMENT_SCHEME, AttachmentService, serveAttachment } from './attachments'
 import { AuthService } from './auth'
 import { ChatService } from './chat'
 import { CheckedOutStore } from './checked-out'
@@ -12,14 +15,18 @@ import { registerIpc } from './ipc'
 import { installMenu } from './menu'
 import { InboxPoller } from './poller'
 import { PromptStore } from './prompt-store'
+import { PullCache } from './pull-cache'
 import { PullService } from './pulls'
 import { SecretsStore } from './secrets'
 import { SettingsStore } from './settings'
 import { broadcast, createMainWindow, focusMainWindow } from './window'
 
-const GUIDE_SWEEP_MS = 6 * 60 * 60 * 1000
+const CACHE_SWEEP_MS = 6 * 60 * 60 * 1000
 
 app.setName('prot')
+protocol.registerSchemesAsPrivileged([
+  { scheme: ATTACHMENT_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }
+])
 
 if (!app.requestSingleInstanceLock()) {
   app.quit()
@@ -35,26 +42,39 @@ function boot(): void {
   const settings = new SettingsStore()
   const secrets = new SecretsStore()
   const auth = new AuthService(secrets, (token) => new GitHubClient(token, githubApiUrl.replace(/\/+$/, '')))
-  const checkedOut = new CheckedOutStore(join(app.getPath('userData'), 'checked-out.json'))
+  const userData = app.getPath('userData')
+  const checkedOut = new CheckedOutStore(join(userData, 'checked-out.json'))
   const poller = new InboxPoller(auth, settings, checkedOut)
-  const pulls = new PullService(auth, (ref) => poller.latestUpdatedAt(ref))
+  const attachmentsRoot = join(userData, 'attachments')
+  const attachments = new AttachmentService(
+    attachmentsRoot,
+    (url) => (auth.user() ? auth.client().attachmentHeaders(url) : {}),
+    (ref) => broadcast(IPC.pullAttachmentsChanged, ref)
+  )
+  const pulls = new PullService(
+    auth,
+    (ref) => poller.latestUpdatedAt(ref),
+    (ref, detail, documents) => cache.fetched(ref, detail, documents)
+  )
   const code = new CodeIndexService(pulls)
-  const prompts = new PromptStore(join(app.getPath('userData'), 'prompts.json'), SYSTEM_PROMPT)
-  const guide = new GuideService(secrets, settings, prompts, pulls, code, join(app.getPath('userData'), 'guides'))
+  const prompts = new PromptStore(join(userData, 'prompts.json'), SYSTEM_PROMPT)
+  const guide = new GuideService(secrets, settings, prompts, pulls, code, join(userData, 'guides'))
+  const cache = new PullCache(guide, attachments, webOrigin(githubApiUrl))
   const chat = new ChatService(secrets, settings, pulls, broadcast)
+  protocol.handle(ATTACHMENT_SCHEME, (request) => serveAttachment(attachmentsRoot, request.url))
 
   poller.onClosed((pull) => {
-    guide.forget(pull.ref).catch((error: unknown) => console.error('Could not delete the guide for a closed PR', error))
+    cache.forget(pull.ref).catch((error: unknown) => console.error('Could not delete the cache for a closed PR', error))
   })
-  const sweepGuides = () => {
+  const sweepCache = () => {
     if (!auth.user()) return
-    guide
+    cache
       .sweep(async (refs) => {
         const states = new Map<string, PullState | null>()
         for (const [key, pull] of await auth.client().getPulls(refs, 'manual')) states.set(key, pull && pull.state)
         return states
       })
-      .catch((error: unknown) => console.error('Guide sweep failed; kept every guide', error))
+      .catch((error: unknown) => console.error('PR cache sweep failed; kept everything', error))
   }
   let sweepTimer: NodeJS.Timeout | null = null
 
@@ -63,13 +83,13 @@ function boot(): void {
     sweepTimer = null
     if (state.status === 'signed_in') {
       poller.start()
-      sweepGuides()
-      sweepTimer = setInterval(sweepGuides, GUIDE_SWEEP_MS)
+      sweepCache()
+      sweepTimer = setInterval(sweepCache, CACHE_SWEEP_MS)
     } else poller.stop()
   })
   app.on('browser-window-focus', () => poller.refreshIfStale())
 
-  registerIpc({ auth, poller, pulls, guide, code, chat, settings, secrets, prompts })
+  registerIpc({ auth, poller, pulls, guide, attachments, cache, code, chat, settings, secrets, prompts })
   installMenu()
   auth.restore()
   createMainWindow()

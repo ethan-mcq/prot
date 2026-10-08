@@ -1,3 +1,5 @@
+import { crc32, deflateSync } from 'node:zlib'
+
 const OWNER = 'capy-ai'
 const REPO = 'capy'
 const NUMBER = 5251
@@ -478,13 +480,91 @@ export function mineSearch() {
 
 export const viewerUser = viewer
 
-export function pullDetail(state: PullState) {
+// Each attachment URL points back at the fixture server, the stand-in for github.com.
+export const attachmentPaths = {
+  sheet: '/user-attachments/assets/7d3c5e2a-share-sheet',
+  log: '/user-attachments/files/17/share-intent.log',
+  inbox: '/user-attachments/assets/91ab04f2-inbox'
+}
+
+export const intentLog = 'I/CapyShare: onNewIntent action=android.intent.action.SEND type=image/jpeg\nI/CapyShare: staged 1 item\n'
+
+function bodyWithAttachments(base: string): string {
+  return `${body}\n\n![Share sheet on a Pixel 8](${base}${attachmentPaths.sheet})\n\nIntent log: [share-intent.log](${base}${attachmentPaths.log})`
+}
+
+function bodyHtml(base: string): string {
+  return [
+    '<p>This PR adds mobile sharing so external content can be staged, uploaded, and sent to Capy threads on iOS and Android.</p>',
+    `<p><a target="_blank" rel="noopener noreferrer" href="${base}${attachmentPaths.sheet}"><img src="${base}${attachmentPaths.sheet}" alt="Share sheet on a Pixel 8" style="max-width: 100%;"></a></p>`,
+    `<p>Intent log: <a href="${base}${attachmentPaths.log}">share-intent.log</a></p>`,
+    '<p>Built with <a href="https://docs.expo.dev/config-plugins/introduction/">Expo config plugins</a>.</p>'
+  ].join('\n')
+}
+
+export function issueComments(base: string, full: boolean) {
+  const comment = {
+    id: 6001,
+    user: { login: 'kai', avatar_url: 'https://avatars.githubusercontent.com/u/3?v=4' },
+    body: `Inbox after sharing two photos:\n\n![Inbox with two shared photos](${base}${attachmentPaths.inbox})`,
+    created_at: '2026-10-06T08:30:00Z',
+    html_url: `https://github.com/${OWNER}/${REPO}/pull/${NUMBER}#issuecomment-6001`
+  }
+  if (!full) return [comment]
+  const html = `<p>Inbox after sharing two photos:</p>\n<p><a target="_blank" rel="noopener noreferrer" href="${base}${attachmentPaths.inbox}"><img src="${base}${attachmentPaths.inbox}" alt="Inbox with two shared photos" style="max-width: 100%;"></a></p>`
+  return [{ ...comment, body_html: html }]
+}
+
+function pngChunk(type: string, data: Buffer): Buffer {
+  const length = Buffer.alloc(4)
+  length.writeUInt32BE(data.length)
+  const typed = Buffer.concat([Buffer.from(type, 'ascii'), data])
+  const crc = Buffer.alloc(4)
+  crc.writeUInt32BE(crc32(typed))
+  return Buffer.concat([length, typed, crc])
+}
+
+// A small screenshot-like PNG: a card with three bars on a tinted background.
+export function screenshotPng(accent: [number, number, number]): Buffer {
+  const width = 360
+  const height = 220
+  const bars = [
+    { y: 56, w: 220 },
+    { y: 96, w: 280 },
+    { y: 136, w: 160 }
+  ]
+  const raw = Buffer.alloc((width * 3 + 1) * height)
+  for (let y = 0; y < height; y++) {
+    const row = y * (width * 3 + 1)
+    for (let x = 0; x < width; x++) {
+      let color: [number, number, number] = [236, 238, 242]
+      if (x >= 24 && x < width - 24 && y >= 24 && y < height - 24) color = [255, 255, 255]
+      for (const bar of bars) {
+        if (x >= 48 && x < 48 + bar.w && y >= bar.y && y < bar.y + 18) color = bar.y === 56 ? accent : [210, 214, 222]
+      }
+      raw.set(color, row + 1 + x * 3)
+    }
+  }
+  const header = Buffer.alloc(13)
+  header.writeUInt32BE(width, 0)
+  header.writeUInt32BE(height, 4)
+  header.set([8, 2, 0, 0, 0], 8)
+  return Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    pngChunk('IHDR', header),
+    pngChunk('IDAT', deflateSync(raw)),
+    pngChunk('IEND', Buffer.alloc(0))
+  ])
+}
+
+export function pullDetail(state: PullState, base = '', full = false) {
   return {
     number: NUMBER,
     state: 'open',
     merged_at: null,
     title,
-    body,
+    body: base === '' ? body : bodyWithAttachments(base),
+    ...(full && base !== '' ? { body_html: bodyHtml(base) } : {}),
     user: author,
     html_url: `https://github.com/${OWNER}/${REPO}/pull/${NUMBER}`,
     draft: false,

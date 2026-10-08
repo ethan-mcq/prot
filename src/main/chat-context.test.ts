@@ -4,6 +4,7 @@ import { attachViewContext, buildChatSystem, buildViewContext } from './chat-con
 
 const emptyContext: ViewContext = {
   pull: null,
+  story: null,
   step: null,
   chapter: null,
   flow: null,
@@ -139,6 +140,45 @@ describe('buildViewContext', () => {
         '</view_context>'
       ].join('\n')
     )
+  })
+
+  it('puts the risk, synopsis and every section of the story before the step, and tells Claude the screen is background', () => {
+    const block = buildViewContext({
+      ...emptyContext,
+      story: {
+        risk: { level: 'medium', reason: 'takeShare has no tests.' },
+        synopsis: 'Routes Android shares into a thread.',
+        sections: [
+          {
+            title: 'Stage shared items',
+            cards: [
+              { qualifiedName: 'MainActivity.onNewIntent', kind: 'method', path: 'app/MainActivity.kt', lines: { start: 11, end: 15 }, change: 'context' },
+              { qualifiedName: 'CapyShareModule.takeShare', kind: 'method', path: 'share/CapyShareModule.kt', lines: { start: 10, end: 14 }, change: 'added' }
+            ],
+            files: []
+          },
+          { title: 'Release config', cards: [], files: ['app.config.ts'] }
+        ]
+      },
+      step: { kind: 'overview' }
+    })
+    const system = buildChatSystem(null)
+    expect({ block, background: system.includes('If it doesn\'t, answer the question on its own terms without mentioning the screen, the page or the context.') }).toEqual({
+      block: [
+        '<view_context>',
+        'Risk: medium. takeShare has no tests.',
+        'Synopsis: Routes Android shares into a thread.',
+        'Story outline:',
+        '1. Stage shared items',
+        '   - MainActivity.onNewIntent (method, context, app/MainActivity.kt:11-15)',
+        '   - CapyShareModule.takeShare (method, added, share/CapyShareModule.kt:10-14)',
+        '2. Release config',
+        '   - file app.config.ts',
+        'Guide step: overview',
+        '</view_context>'
+      ].join('\n'),
+      background: true
+    })
   })
 
   it('truncates the patch at 30000 characters', () => {

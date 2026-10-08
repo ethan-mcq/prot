@@ -16,7 +16,7 @@ import {
   X
 } from 'lucide-react'
 import { displayName, findVersion, livePrompt, type PromptLibrary } from '@shared/prompts'
-import type { Chapter, DriftReason, GuideDrift, GuideStep, PullDetail, PullRef } from '@shared/types'
+import type { CardContext, Chapter, DriftReason, GuideDrift, GuideStep, PullDetail, PullRef, StoryContext } from '@shared/types'
 import { pullKey } from '@shared/types'
 import { classifyFile } from '@shared/guide'
 import { Button } from '@/components/ui/button'
@@ -43,7 +43,9 @@ import {
   readStored,
   reviewReducer,
   saveSession,
-  storageKey
+  storageKey,
+  symbolFor,
+  type ReviewSession
 } from '@/lib/review-session'
 import { cn, errorMessage } from '@/lib/utils'
 import { EMPTY_VIEW, useViewStore } from '@/lib/view-context'
@@ -186,14 +188,16 @@ function ReviewScreen({ initial, viewer }: { initial: PullDetail; viewer: string
     void requestAi(true)
   }, [settings.autoRefreshStaleGuides, keys.anthropic, drift.kind, session.ai.status, sha, requestAi])
 
+  const story = useMemo(() => storyContext(session), [session.guide, session.symbols])
   useEffect(() => {
     updateView({
       pull: { ref, author: detail.summary.author.login },
+      story,
       step,
       chapter: step.kind === 'chapter' ? (guide.chapters[step.index] ?? null) : null,
       flow: guide.flow
     })
-  }, [updateView, ref, detail, guide, step.kind, session.step])
+  }, [updateView, ref, detail, guide, story, step.kind, session.step])
   useEffect(() => () => updateView(EMPTY_VIEW), [updateView])
   useEffect(() => {
     setQuestions(guide.questions)
@@ -335,6 +339,20 @@ function ReviewScreen({ initial, viewer }: { initial: PullDetail; viewer: string
       <ReviewDialog open={reviewOpen} onOpenChange={setReviewOpen} viewer={viewer} onSubmitted={() => void refetch(null)} />
     </ReviewContext.Provider>
   )
+}
+
+function storyContext(session: ReviewSession): StoryContext {
+  const { overview, chapters } = session.guide
+  const sections = chapters.map((chapter) => {
+    const cards: CardContext[] = []
+    for (const card of chapter.cards) {
+      const symbol = card.seeChapterId === null ? symbolFor(session, card.symbolId) : undefined
+      if (symbol === undefined) continue
+      cards.push({ qualifiedName: symbol.qualifiedName, kind: symbol.kind, path: symbol.path, lines: symbol.head ?? symbol.base, change: symbol.change })
+    }
+    return { title: chapter.title, cards, files: chapter.cards.length === 0 ? chapter.files : [] }
+  })
+  return { risk: overview.risk, synopsis: overview.synopsis, sections }
 }
 
 function TitleButton({ className, ...props }: ComponentProps<'button'>) {

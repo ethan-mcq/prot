@@ -6,7 +6,8 @@ export type PromptVersion = {
   builtIn: boolean
 }
 
-export type PromptLibrary = { versions: PromptVersion[]; liveHash: string }
+// retiredBuiltIns holds the hashes of deleted built-in versions so reconcile does not bring them back.
+export type PromptLibrary = { versions: PromptVersion[]; liveHash: string; retiredBuiltIns: string[] }
 
 export const PROMPT_HASH = /^[0-9a-f]{12}$/
 export const PROMPT_NAME_MAX = 60
@@ -73,14 +74,22 @@ export function setLive(lib: PromptLibrary, hash: string): PromptLibrary {
   return { ...lib, liveHash: hash }
 }
 
+export function removeVersion(lib: PromptLibrary, hash: string): PromptLibrary {
+  const version = mustFind(lib, hash)
+  if (hash === lib.liveHash) throw new Error('The live prompt cannot be deleted. Make another version live first.')
+  const versions = lib.versions.filter((candidate) => candidate.hash !== hash)
+  const retiredBuiltIns = version.builtIn ? [...lib.retiredBuiltIns, hash] : lib.retiredBuiltIns
+  return { ...lib, versions, retiredBuiltIns }
+}
+
 export async function seedLibrary(builtInText: string, now: string): Promise<PromptLibrary> {
   const version = await newVersion(builtInText, now, true, BUILT_IN_NAME)
-  return { versions: [version], liveHash: version.hash }
+  return { versions: [version], liveHash: version.hash, retiredBuiltIns: [] }
 }
 
 export async function reconcile(lib: PromptLibrary, builtInText: string, now: string): Promise<PromptLibrary> {
   const version = await newVersion(builtInText, now, true, null)
-  if (findVersion(lib, version.hash) !== undefined) return lib
+  if (findVersion(lib, version.hash) !== undefined || lib.retiredBuiltIns.includes(version.hash)) return lib
   return { ...lib, versions: [...lib.versions, version] }
 }
 

@@ -1,4 +1,5 @@
 import { pullKey, type PullDetail, type PullRef, type ReviewComment, type ReviewInput } from '@shared/types'
+import type { AttachmentDocument } from './attachment-links'
 import type { AuthService } from './auth'
 
 // Patches for big PRs are large; keep only the most recently fetched pull requests in memory.
@@ -9,13 +10,15 @@ export class PullService {
 
   constructor(
     private readonly auth: AuthService,
-    private readonly latestUpdatedAt: (ref: PullRef) => string | null
+    private readonly latestUpdatedAt: (ref: PullRef) => string | null,
+    private readonly onFetched: (ref: PullRef, detail: PullDetail, documents: AttachmentDocument[]) => void
   ) {}
 
   async fetch(ref: PullRef): Promise<PullDetail> {
     const viewer = this.auth.user()
     if (!viewer) throw new Error('Not signed in to GitHub.')
-    const detail = await this.auth.client().getPull(ref, viewer.login)
+    const { detail, documents } = await this.auth.client().getPull(ref, viewer.login)
+    this.onFetched(ref, detail, documents)
     const key = pullKey(ref)
     this.details.delete(key)
     this.details.set(key, detail)
