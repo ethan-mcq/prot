@@ -288,7 +288,7 @@ function isBot(user: RawUser): boolean {
 }
 
 // Only a person's PR description is read for attachments; comments and bot-written descriptions never are.
-export function descriptionAttachments(raw: RawPull, web: string): AttachmentLink[] {
+export function descriptionAttachments(raw: RawPull, web: string, api: string): AttachmentLink[] {
   if (isBot(raw.user)) return []
-  return attachmentLinks(raw.body_html ?? null, raw.body ?? '', web)
+  return attachmentLinks(raw.body_html ?? null, raw.body ?? '', web, api)
 }

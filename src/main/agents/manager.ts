@@ -1,7 +1,7 @@
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve, sep } from 'node:path'
 import { createInterface } from 'node:readline'
@@ -9,8 +9,12 @@ import { BrowserWindow, dialog, Notification, shell } from 'electron'
 import {
   type AgentInstructions,
   AGENT_PROVIDERS,
+  isImageMime,
   PROVIDER_NAMES,
+  type AgentAttachment,
   type AgentChange,
+  type AgentCommand,
+  type AgentContext,
   type AgentDetail,
   type AgentEvent,
   type AgentFileChange,
@@ -25,13 +29,16 @@ import {
   type ProviderInfo,
   type UsageWindow
 } from '@shared/agents'
+import { expandCommands } from '@shared/agent-commands'
 import { IPC } from '@shared/ipc'
 import type { AuthService } from '../auth'
 import type { SettingsStore } from '../settings'
 import { focusMainWindow } from '../window'
-import { newClaudeState, parseClaudeLine, type ClaudeParseState } from './claude-events'
+import { AgentAttachments } from './attachments'
+import { newClaudeState, parseClaudeLine, type ClaudeParseState, type SaveImage } from './claude-events'
 import {
   childEnv,
+  claudeStdinMessage,
   claudeConfigDir,
   claudeDefaults,
   claudeModels,
@@ -46,8 +53,12 @@ import {
   probeSignIn,
   probeVersion,
   turnArgs,
+  type StdinImage,
   type TurnMode
 } from './cli'
+import { commandBody, discoverCommands, parseCommandsChanged } from './commands'
+import { AgentFileAllowlist } from './files'
+import { eventImages, imageSaver, withImages } from './images'
 import { newCodexState, parseCodexLine, type CodexParseState } from './codex-events'
 import { oneLine, promptTitle, type ToolEvent } from './events'
 import {
@@ -68,6 +79,7 @@ import {
   listClaudeSessions,
   listCodexSessions,
   readClaudeTranscript,
+  readCodexContext,
   readCodexTranscript,
   type OutsideSession
 } from './sessions'
@@ -83,6 +95,8 @@ const RECENT_MS = 24 * 60 * 60 * 1000
 const STOP_GRACE_MS = 5_000
 const STDERR_LINES = 20
 const GIT_CONCURRENCY = 4
+const CLAUDE_WINDOW = 200_000
+const CLAUDE_1M_WINDOW = 1_000_000
 
 type Turn = {
   child: ChildProcess
@@ -94,6 +108,8 @@ type Turn = {
   spawnError: string | null
   claude: ClaudeParseState | null
   codex: CodexParseState | null
+  // The model the stream reports, for its context window.
+  model: string | null
 }
 
 type Outside = { summary: AgentSummary; file: string }
@@ -124,8 +140,22 @@ function signal(child: ChildProcess, name: NodeJS.Signals): void {
   }
 }
 
+async function isDirectory(path: string): Promise<boolean> {
+  try {
+    return (await stat(path)).isDirectory()
+  } catch {
+    return false
+  }
+}
+
 function sameJson(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b)
+}
+
+function userEvent(at: string, text: string, attachments: AgentAttachment[]): AgentEvent {
+  const event: AgentEvent = { kind: 'user', id: randomUUID(), at, text }
+  if (attachments.length > 0) event.attachments = attachments
+  return event
 }
 
 export class AgentManager {
@@ -138,14 +168,21 @@ export class AgentManager {
   private timer: NodeJS.Timeout | null = null
   private ticking = false
   private claudeUsageAt = 0
+  private readonly attachments: AgentAttachments
+  private readonly saveImage: SaveImage
+  private readonly files = new AgentFileAllowlist()
 
   constructor(
     private readonly store: AgentStore,
     private readonly auth: AuthService,
     private readonly settings: SettingsStore,
     private readonly prompts: PromptStore,
-    private readonly broadcast: (channel: string, payload: unknown) => void
+    private readonly broadcast: (channel: string, payload: unknown) => void,
+    // userData/agents: attachments/ and images/ live under it.
+    dataDir: string
   ) {
+    this.attachments = new AgentAttachments(join(dataDir, 'attachments'))
+    this.saveImage = imageSaver(join(dataDir, 'images'))
     let changed = false
     for (const agent of store.agents()) {
       if (agent.status !== 'running') continue
@@ -187,8 +224,11 @@ export class AgentManager {
   }
 
   async start(input: AgentStartInput): Promise<AgentSummary> {
-    const repo = await repoRoot(input.repoPath)
-    if (!repo) throw new Error(`${input.repoPath} is not in a git repository`)
+    const folder = resolve(input.folder)
+    if (!(await isDirectory(folder))) throw new Error(`${input.folder} is not a folder`)
+    const repo = await repoRoot(folder)
+    if (input.worktree && !repo) throw new Error(`${folder} is not a git repository, so it cannot have a worktree`)
+    const attachments = await this.attachments.resolve(input.attachments)
     const info = await this.providerInfo(input.provider)
     if (!info.binary) throw new Error(`${PROVIDER_NAMES[input.provider]} is not installed`)
     if (!info.signedIn) throw new Error(`${PROVIDER_NAMES[input.provider]} is not signed in`)
@@ -196,10 +236,10 @@ export class AgentManager {
       throw new Error(`Unknown permission ${input.permission}`)
     }
 
-    let cwd = repo
-    let branch = await currentBranch(repo)
+    let cwd = repo ?? folder
+    let branch = repo ? await currentBranch(repo) : null
     let worktree: StoredAgent['worktree'] = null
-    if (input.worktree) {
+    if (input.worktree && repo) {
       const slug = worktreeSlug(input.prompt, randomBytes(2).toString('hex'))
       const path = join(worktreeRoot(), basename(repo), slug)
       const base = branch ?? (await headSha(repo)) ?? 'HEAD'
@@ -217,7 +257,7 @@ export class AgentManager {
       provider: input.provider,
       title: promptTitle(input.prompt),
       repoPath: repo,
-      repoName: basename(repo),
+      repoName: basename(repo ?? folder),
       cwd,
       branch,
       worktree,
@@ -234,32 +274,91 @@ export class AgentManager {
       pr: null,
       changes: null,
       costUsd: null,
+      context: null,
       archived: false,
       forkedFrom: null,
       promptHash: null
     }
     this.store.add(agent)
-    this.store.addRepo(repo)
-    this.emit(agent, [await this.lockPrompt(agent, now), { kind: 'user', id: randomUUID(), at: now, text: input.prompt }])
-    await this.runTurn(agent, input.prompt, 'first', agent.sessionId)
+    this.store.addRepo(repo ?? folder)
+    this.emit(agent, [await this.lockPrompt(agent, now), userEvent(now, input.prompt, attachments)])
+    await this.runTurn(agent, input.prompt, 'first', agent.sessionId, attachments)
     return publicSummary(agent)
   }
 
   async get(id: string): Promise<AgentDetail> {
     const agent = this.store.get(id)
-    if (agent && !agent.archived) return { ...publicSummary(agent), transcript: await this.store.readTranscript(id) }
+    if (agent && !agent.archived) return { ...publicSummary(agent), transcript: this.allowImages(await this.store.readTranscript(id)) }
     const outside = this.outside.get(id)
     if (!outside) throw new Error('Unknown agent')
-    const read = outside.summary.provider === 'claude' ? readClaudeTranscript : readCodexTranscript
-    return { ...outside.summary, transcript: await read(outside.file) }
+    return { ...outside.summary, transcript: this.allowImages(await this.readOutside(outside)) }
   }
 
-  async send(id: string, prompt: string): Promise<AgentSummary> {
+  // The protocol serves only image paths a loaded agent's events or attachments named.
+  fileAllowed(path: string): boolean {
+    return this.files.has(path)
+  }
+
+  private allowImages(events: AgentEvent[]): AgentEvent[] {
+    for (const event of events) this.files.allow(eventImages(event))
+    return events
+  }
+
+  private async readOutside(outside: Outside): Promise<AgentEvent[]> {
+    const events =
+      outside.summary.provider === 'claude' ? await readClaudeTranscript(outside.file, this.saveImage) : await readCodexTranscript(outside.file)
+    const out: AgentEvent[] = []
+    for (const event of events) out.push(withImages(event))
+    return out
+  }
+
+  async commands(folder: string): Promise<AgentCommand[]> {
+    return this.discover(resolve(folder))
+  }
+
+  private async discover(dir: string): Promise<AgentCommand[]> {
+    const agentFolder = this.settings.get().agentFolder
+    return discoverCommands({
+      repoPath: dir,
+      home: homedir(),
+      claudeDir: claudeConfigDir(),
+      codexHome: codexHome(),
+      agentFolder: agentFolder && existsSync(agentFolder) ? agentFolder : null,
+      cached: this.store.cachedCommands(dir)
+    })
+  }
+
+  // /name tokens become what the agent's CLI understands.
+  private async expand(agent: StoredAgent, text: string): Promise<string> {
+    if (!text.includes('/')) return text
+    const commands = await this.discover(agent.repoPath ?? agent.cwd)
+    return expandCommands(text, agent.provider, commands, (command) => (command.path ? commandBody(command.path) : null))
+  }
+
+  async pickAttachments(): Promise<AgentAttachment[]> {
+    const options: Electron.OpenDialogOptions = { title: 'Attach files', properties: ['openFile', 'multiSelections'] }
+    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+    const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options)
+    if (result.canceled) return []
+    const out: AgentAttachment[] = []
+    for (const path of result.filePaths) out.push(await this.attachments.copy(path))
+    this.files.allow(out.map((attachment) => attachment.path))
+    return out
+  }
+
+  async saveAttachment(name: string, data: Uint8Array): Promise<AgentAttachment> {
+    const attachment = await this.attachments.save(name, data)
+    this.files.allow([attachment.path])
+    return attachment
+  }
+
+  async send(id: string, prompt: string, list: AgentAttachment[] = []): Promise<AgentSummary> {
+    const attachments = await this.attachments.resolve(list)
     const agent = this.store.get(id)
     if (!agent || agent.archived) {
       const outside = this.outside.get(id)
       if (!outside) throw new Error('Unknown agent')
-      return this.fork(outside, prompt)
+      return this.fork(outside, prompt, attachments)
     }
     if (this.turns.has(id)) throw new Error('This agent is still working. Stop it or wait for the turn to end.')
     if (!existsSync(agent.cwd)) throw new Error(`${agent.cwd} no longer exists`)
@@ -275,8 +374,8 @@ export class AgentManager {
         sessionId = agent.sessionId
       }
     }
-    this.emit(agent, [{ kind: 'user', id: randomUUID(), at: new Date().toISOString(), text: prompt }])
-    await this.runTurn(agent, prompt, mode, sessionId)
+    this.emit(agent, [userEvent(new Date().toISOString(), prompt, attachments)])
+    await this.runTurn(agent, prompt, mode, sessionId, attachments)
     return publicSummary(agent)
   }
 
@@ -329,7 +428,7 @@ export class AgentManager {
 
   async changes(id: string): Promise<AgentFileChange[]> {
     const agent = this.summary(id)
-    if (!existsSync(agent.cwd)) return []
+    if (!existsSync(agent.cwd) || !(await repoRoot(agent.cwd))) return []
     return fileChanges(agent.cwd, agent.worktree?.base ?? null)
   }
 
@@ -339,16 +438,21 @@ export class AgentManager {
     return fileDiff(agent.cwd, agent.worktree?.base ?? null, path)
   }
 
-  async addRepo(): Promise<AgentRepo | null> {
-    const options: Electron.OpenDialogOptions = { title: 'Add a repository', properties: ['openDirectory'] }
+  async addFolder(): Promise<AgentRepo | null> {
+    const options: Electron.OpenDialogOptions = { title: 'Add a folder', properties: ['openDirectory', 'createDirectory'] }
     const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
     const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options)
     const picked = result.filePaths[0]
     if (result.canceled || !picked) return null
-    const root = await repoRoot(picked)
-    if (!root) throw new Error(`${picked} is not in a git repository`)
-    this.store.addRepo(root)
-    return { path: root, name: basename(root), branch: await currentBranch(root) }
+    if (!(await isDirectory(picked))) throw new Error(`${picked} is not a folder`)
+    const path = (await repoRoot(picked)) ?? resolve(picked)
+    this.store.addRepo(path)
+    return this.folderEntry(path)
+  }
+
+  private async folderEntry(path: string): Promise<AgentRepo> {
+    const git = (await repoRoot(path)) !== null
+    return { path, name: basename(path), branch: git ? await currentBranch(path) : null, git }
   }
 
   async open(id: string, target: AgentOpenTarget): Promise<void> {
@@ -459,7 +563,7 @@ export class AgentManager {
     const repos: AgentRepo[] = []
     for (const path of this.store.repos()) {
       if (!existsSync(path)) continue
-      repos.push({ path, name: basename(path), branch: await currentBranch(path) })
+      repos.push(await this.folderEntry(path))
     }
     return repos
   }
@@ -512,7 +616,8 @@ export class AgentManager {
         lastMessage: session.lastMessage,
         pr: previous?.pr ?? null,
         changes: previous?.changes ?? null,
-        costUsd: session.costUsd
+        costUsd: session.costUsd,
+        context: this.outsideContext(session)
       }
       this.outside.set(id, { summary, file: session.file })
       if (!previous || !sameJson(previous, summary)) this.changed(summary, null)
@@ -520,6 +625,19 @@ export class AgentManager {
     for (const id of [...this.outside.keys()]) {
       if (!seen.has(id)) this.outside.delete(id)
     }
+  }
+
+  private outsideContext(session: OutsideSession): AgentContext | null {
+    if (session.contextTokens === null) return null
+    const window = session.contextWindow ?? (session.provider === 'claude' ? this.claudeWindow(session.model, null) : null)
+    return window ? { usedTokens: session.contextTokens, windowTokens: window } : null
+  }
+
+  // The window result.modelUsage last reported for the model, else Claude's default for it.
+  private claudeWindow(agentModel: string | null, streamModel: string | null): number {
+    const known = (streamModel ? this.store.contextWindow(streamModel) : null) ?? (agentModel ? this.store.contextWindow(agentModel) : null)
+    if (known) return known
+    return agentModel?.includes('[1m]') || streamModel?.includes('[1m]') ? CLAUDE_1M_WINDOW : CLAUDE_WINDOW
   }
 
   // At most every 5 minutes unless forced; each probe starts the CLI.
@@ -693,9 +811,15 @@ export class AgentManager {
     return this.prompts.setLive('agent', version.hash)
   }
 
-  private async runTurn(agent: StoredAgent, prompt: string, mode: TurnMode, sessionId: string | null): Promise<void> {
+  private async runTurn(
+    agent: StoredAgent,
+    prompt: string,
+    mode: TurnMode,
+    sessionId: string | null,
+    attachments: AgentAttachment[]
+  ): Promise<void> {
     try {
-      await this.spawnTurn(agent, prompt, mode, sessionId)
+      await this.spawnTurn(agent, await this.expand(agent, prompt), mode, sessionId, attachments)
     } catch (error) {
       const text = error instanceof Error ? error.message : String(error)
       agent.status = 'failed'
@@ -705,23 +829,50 @@ export class AgentManager {
     }
   }
 
-  private async spawnTurn(agent: StoredAgent, prompt: string, mode: TurnMode, sessionId: string | null): Promise<void> {
+  private async spawnTurn(
+    agent: StoredAgent,
+    prompt: string,
+    mode: TurnMode,
+    sessionId: string | null,
+    attachments: AgentAttachment[]
+  ): Promise<void> {
     const info = await this.providerInfo(agent.provider)
     if (!info.binary) throw new Error(`${PROVIDER_NAMES[agent.provider]} is not installed`)
     const agentFolder = this.settings.get().agentFolder
+    const images: AgentAttachment[] = []
+    const others: string[] = []
+    for (const attachment of attachments) {
+      if (isImageMime(attachment.mime)) images.push(attachment)
+      else others.push(`- ${attachment.path}`)
+    }
+    let text = prompt
+    if (others.length > 0) text += `\n\nAttached files:\n${others.join('\n')}`
+    const stdinPrompt = agent.provider === 'claude' && images.length > 0
+    let stdin: string | null = null
+    if (stdinPrompt) {
+      const blocks: StdinImage[] = []
+      for (const image of images) blocks.push({ mime: image.mime, data: await readFile(image.path) })
+      stdin = claudeStdinMessage(text, blocks)
+    }
     const args = turnArgs(agent.provider, {
       mode,
-      prompt,
+      prompt: text,
       model: agent.model ?? info.defaultModel,
       effort: agent.effort ?? info.defaultEffort,
       permission: agent.permission ?? info.defaultPermission,
       cwd: agent.cwd,
       sessionId,
       systemPrompt: await this.systemPrompt(agent),
-      addDirs: agent.provider === 'claude' && agentFolder && existsSync(agentFolder) ? [agentFolder] : []
+      addDirs: agent.provider === 'claude' && agentFolder && existsSync(agentFolder) ? [agentFolder] : [],
+      stdinPrompt,
+      images: agent.provider === 'codex' ? images.map((image) => image.path) : []
     })
     const env = await childEnv()
-    const child = spawn(info.binary, args, { cwd: agent.cwd, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true })
+    const child = spawn(info.binary, args, { cwd: agent.cwd, env, stdio: [stdin === null ? 'ignore' : 'pipe', 'pipe', 'pipe'], detached: true })
+    if (stdin !== null && child.stdin) {
+      child.stdin.on('error', () => {})
+      child.stdin.end(stdin)
+    }
     const turn: Turn = {
       child,
       stopping: false,
@@ -730,8 +881,9 @@ export class AgentManager {
       sawResult: false,
       resultError: false,
       spawnError: null,
-      claude: agent.provider === 'claude' ? newClaudeState() : null,
-      codex: agent.provider === 'codex' ? newCodexState(randomBytes(4).toString('hex')) : null
+      claude: agent.provider === 'claude' ? newClaudeState(false, this.saveImage) : null,
+      codex: agent.provider === 'codex' ? newCodexState(randomBytes(4).toString('hex')) : null,
+      model: null
     }
     this.turns.set(agent.id, turn)
     const now = new Date().toISOString()
@@ -764,6 +916,19 @@ export class AgentManager {
       const out = parseClaudeLine(raw, turn.claude, now)
       if (out.sessionId) agent.sessionId = out.sessionId
       if (out.usage) this.setUsage('claude', out.usage)
+      if (out.model) turn.model = out.model
+      if (out.commands) {
+        const commands = parseCommandsChanged(out.commands)
+        if (commands) this.store.setCachedCommands(agent.repoPath ?? agent.cwd, commands)
+      }
+      if (out.contextWindows) {
+        this.store.setContextWindows(out.contextWindows)
+        if (agent.context) agent.context = { ...agent.context, windowTokens: this.claudeWindow(agent.model, turn.model) }
+      }
+      if (out.contextTokens !== null) {
+        agent.context = { usedTokens: out.contextTokens, windowTokens: this.claudeWindow(agent.model, turn.model) }
+        this.changed(agent, null)
+      }
       if (out.result) {
         turn.sawResult = true
         turn.resultError = out.result.isError
@@ -815,7 +980,23 @@ export class AgentManager {
     this.changed(agent, null)
     this.notifyTurnEnd(agent)
     void this.refreshGit([agent])
-    if (agent.provider === 'codex') void this.refreshCodexUsage()
+    if (agent.provider === 'codex') {
+      void this.refreshCodexUsage()
+      void this.refreshCodexContext(agent)
+    }
+  }
+
+  private async refreshCodexContext(agent: StoredAgent): Promise<void> {
+    if (!agent.sessionId) return
+    try {
+      const context = await readCodexContext(codexHome(), agent.sessionId)
+      if (!context || sameJson(context, agent.context)) return
+      agent.context = context
+      this.store.scheduleSave()
+      this.changed(agent, null)
+    } catch {
+      // Keep the last known context.
+    }
   }
 
   private setUsage(provider: AgentProvider, usage: UsageWindow[]): void {
@@ -824,8 +1005,11 @@ export class AgentManager {
     this.broadcast(IPC.agentsUsage, change)
   }
 
-  private emit(agent: StoredAgent, events: AgentEvent[]): void {
-    if (events.length === 0) return
+  private emit(agent: StoredAgent, list: AgentEvent[]): void {
+    if (list.length === 0) return
+    const events: AgentEvent[] = []
+    for (const event of list) events.push(withImages(event))
+    this.allowImages(events)
     for (const event of events) {
       if (event.kind === 'assistant') agent.lastMessage = oneLine(event.text).slice(0, 300)
     }
@@ -846,7 +1030,7 @@ export class AgentManager {
     this.broadcast(IPC.agentsChanged, change)
   }
 
-  private async fork(outside: Outside, prompt: string): Promise<AgentSummary> {
+  private async fork(outside: Outside, prompt: string, attachments: AgentAttachment[]): Promise<AgentSummary> {
     const source = outside.summary
     if (!existsSync(source.cwd)) throw new Error(`${source.cwd} no longer exists`)
     const info = await this.providerInfo(source.provider)
@@ -876,16 +1060,16 @@ export class AgentManager {
       pr: source.pr,
       changes: source.changes,
       costUsd: null,
+      context: source.context,
       archived: false,
       forkedFrom: source.sessionId,
       promptHash: null
     }
-    const read = source.provider === 'claude' ? readClaudeTranscript : readCodexTranscript
-    const history = await read(outside.file).catch(() => [] as AgentEvent[])
+    const history = await this.readOutside(outside).catch(() => [] as AgentEvent[])
     this.store.add(agent)
     await this.store.appendEvents(agent.id, history)
-    this.emit(agent, [await this.lockPrompt(agent, now), { kind: 'user', id: randomUUID(), at: now, text: prompt }])
-    await this.runTurn(agent, prompt, 'fork', source.sessionId)
+    this.emit(agent, [await this.lockPrompt(agent, now), userEvent(now, prompt, attachments)])
+    await this.runTurn(agent, prompt, 'fork', source.sessionId, attachments)
     return publicSummary(agent)
   }
 

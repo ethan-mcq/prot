@@ -2,8 +2,8 @@ import { createReadStream } from 'node:fs'
 import { open, readdir, readFile, stat } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { createInterface } from 'node:readline'
-import type { AgentEvent, AgentProvider, UsageWindow } from '@shared/agents'
-import { claudePromptText, claudeTitleText, newClaudeState, parseClaudeLine } from './claude-events'
+import type { AgentContext, AgentEvent, AgentProvider, UsageWindow } from '@shared/agents'
+import { claudePromptText, claudeTitleText, newClaudeState, parseClaudeLine, usageContextTokens, type SaveImage } from './claude-events'
 import { isConfigWarning, mcpResultText } from './codex-events'
 import { oneLine, toolSummary, truncateOutput, unwrapShell, usageWindow, windowLabel, type ToolEvent } from './events'
 
@@ -31,6 +31,9 @@ export type OutsideSession = {
   lastTurnAt: string | null
   lastMessage: string | null
   costUsd: number | null
+  // Tokens in the newest request's context, and the window when the file says (Codex only).
+  contextTokens: number | null
+  contextWindow: number | null
 }
 
 type FileEntry = { file: string; mtimeMs: number; size: number }
@@ -178,8 +181,12 @@ async function readClaudeSummary(entry: FileEntry): Promise<OutsideSession | nul
   let lastMessage: string | null = null
   let costUsd: number | null = null
   let lastTurnAt: string | null = null
+  let contextTokens: number | null = null
   for (const line of await readTail(entry.file, entry.size)) {
     if (claudePromptText(line)) lastTurnAt = str(line.timestamp) ?? lastTurnAt
+    if (line.type === 'assistant' && line.isSidechain !== true) {
+      contextTokens = usageContextTokens((line.message as { usage?: Parameters<typeof usageContextTokens>[0] } | undefined)?.usage) ?? contextTokens
+    }
     if (line.type === 'custom-title') customTitle = str(line.customTitle) ?? customTitle
     else if (line.type === 'ai-title') aiTitle = str(line.aiTitle) ?? aiTitle
     else if (line.type === 'cost-state' && typeof line.totalCostUSD === 'number') costUsd = line.totalCostUSD
@@ -211,7 +218,9 @@ async function readClaudeSummary(entry: FileEntry): Promise<OutsideSession | nul
     running: false,
     lastTurnAt,
     lastMessage: lastMessage ? oneLine(lastMessage).slice(0, 300) : null,
-    costUsd
+    costUsd,
+    contextTokens,
+    contextWindow: null
   }
 }
 
@@ -237,8 +246,8 @@ export async function listClaudeSessions(configDir: string, exclude: Set<string>
   return sessions
 }
 
-export async function readClaudeTranscript(file: string): Promise<AgentEvent[]> {
-  const state = newClaudeState(true)
+export async function readClaudeTranscript(file: string, saveImage: SaveImage | null = null): Promise<AgentEvent[]> {
+  const state = newClaudeState(true, saveImage)
   const events: AgentEvent[] = []
   const now = new Date().toISOString()
   for (const line of await readLines(file)) {
@@ -371,7 +380,9 @@ async function readCodexSummary(entry: FileEntry, titles: Map<string, string>): 
   if (!sessionId || !cwd) return null
   let lastMessage: string | null = null
   let lastTurnAt: string | null = null
-  for (const line of await readTail(entry.file, entry.size)) {
+  const tail = await readTail(entry.file, entry.size)
+  const context = codexContextFrom(tail)
+  for (const line of tail) {
     if (line.type === 'event_msg' && payloadOf(line)?.type === 'task_started') lastTurnAt = str(line.timestamp) ?? lastTurnAt
     const text = codexAssistantText(line)
     if (text && text.trim() !== '') lastMessage = text
@@ -397,7 +408,9 @@ async function readCodexSummary(entry: FileEntry, titles: Map<string, string>): 
     running: false,
     lastTurnAt,
     lastMessage: lastMessage ? oneLine(lastMessage).slice(0, 300) : null,
-    costUsd: null
+    costUsd: null,
+    contextTokens: context?.usedTokens ?? null,
+    contextWindow: context?.windowTokens ?? null
   }
 }
 
@@ -471,7 +484,13 @@ function itemEvent(item: Record<string, unknown>, at: string): AgentEvent | null
     return { kind: 'tool', id, at, name: 'WebSearch', summary: oneLine(str(item.query) ?? ''), output: null, status: 'ok' }
   }
   if (type === 'ImageView') {
-    return { kind: 'tool', id, at, name: 'ViewImage', summary: oneLine((str(item.path) ?? '').replace(/^file:\/\//, '')), output: null, status: 'ok' }
+    const path = (str(item.path) ?? '').replace(/^file:\/\//, '')
+    return { kind: 'tool', id, at, name: 'ViewImage', summary: oneLine(path), output: null, status: 'ok', images: path ? [path] : [] }
+  }
+  if (type === 'ImageGeneration') {
+    const path = str(item.saved_path) ?? ''
+    const prompt = str(item.revised_prompt) ?? ''
+    return { kind: 'tool', id, at, name: 'ImageGeneration', summary: oneLine(prompt || path), output: null, status: 'ok', images: path ? [path] : [] }
   }
   return null
 }
@@ -591,6 +610,37 @@ export function codexUsageFrom(payload: Record<string, unknown>): UsageWindow[] 
     if (window) windows.push(window)
   }
   return windows.length > 0 ? windows : null
+}
+
+// The newest token_count with token info: the last request's tokens and the model's window.
+export function codexContextFrom(lines: Record<string, unknown>[]): AgentContext | null {
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i]!
+    const payload = payloadOf(line)
+    if (line.type !== 'event_msg' || payload?.type !== 'token_count') continue
+    const info = payload.info as { last_token_usage?: { total_tokens?: unknown }; model_context_window?: unknown } | null | undefined
+    const used = info?.last_token_usage?.total_tokens
+    const window = info?.model_context_window
+    if (typeof used === 'number' && typeof window === 'number' && window > 0) return { usedTokens: used, windowTokens: window }
+  }
+  return null
+}
+
+// The rollout file of a thread, newest day first.
+export async function findCodexRollout(home: string, threadId: string, now = Date.now()): Promise<string | null> {
+  const entries = await codexFiles(home, now)
+  entries.sort((a, b) => b.mtimeMs - a.mtimeMs)
+  for (const entry of entries) {
+    if (codexIdFromName(basename(entry.file)) === threadId) return entry.file
+  }
+  return null
+}
+
+export async function readCodexContext(home: string, threadId: string): Promise<AgentContext | null> {
+  const file = await findCodexRollout(home, threadId)
+  const entry = file ? await statEntry(file) : null
+  if (!entry) return null
+  return codexContextFrom(await readTail(entry.file, entry.size))
 }
 
 // The newest rate_limits any Codex session logged.

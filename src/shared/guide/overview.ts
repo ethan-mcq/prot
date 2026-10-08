@@ -83,7 +83,7 @@ export const RISK_RULES: RiskRule[] = [
   }
 ]
 
-export function assessRisk(input: RiskInput): GuideOverview['risk'] {
+export function assessRisk(input: RiskInput): { level: RiskLevel; reason: string } {
   for (const rule of RISK_RULES) {
     const reason = rule.reason(input)
     if (reason !== null) return { level: rule.level, reason }
@@ -122,6 +122,6 @@ function fileSynopsis(input: RiskInput, detail: PullDetail): string {
 
 export function overviewFor(detail: PullDetail, chapters: Chapter[], symbols: Record<string, CodeSymbol>): GuideOverview {
   const input: RiskInput = { files: reviewFiles(detail.files), chapters, symbols }
-  const synopsis = Object.keys(symbols).length > 0 ? codeSynopsis(input) : fileSynopsis(input, detail)
-  return { risk: assessRisk(input), synopsis }
+  const goal = Object.keys(symbols).length > 0 ? codeSynopsis(input) : fileSynopsis(input, detail)
+  return { risk: assessRisk(input).level, goal }
 }

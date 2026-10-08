@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { appendFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { AGENT_PROVIDERS, type AgentEvent, type AgentProvider, type AgentSummary, type UsageWindow } from '@shared/agents'
+import { AGENT_PROVIDERS, type AgentContext, type AgentEvent, type AgentProvider, type AgentSummary, type UsageWindow } from '@shared/agents'
+import type { CachedCommand } from './commands'
 import { collapse } from './sessions'
 
 export type StoredAgent = AgentSummary & {
@@ -18,9 +19,14 @@ type StoreFile = {
   // Outside sessions archived from the dash.
   hidden: string[]
   usage: Partial<Record<AgentProvider, UsageWindow[]>>
+  // The newest system/commands_changed list per cwd.
+  commands: Record<string, CachedCommand[]>
+  // Context window per Claude model, from result.modelUsage.
+  windows: Record<string, number>
 }
 
 const REPO_CAP = 20
+const COMMAND_DIRS_CAP = 40
 const SAVE_DELAY_MS = 500
 const AGENT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
@@ -63,10 +69,42 @@ function parseAgent(raw: unknown): StoredAgent | null {
     pr: value.pr ?? null,
     changes: value.changes ?? null,
     costUsd: value.costUsd ?? null,
+    context: parseContext(value.context),
     archived: value.archived === true,
     forkedFrom: value.forkedFrom ?? null,
     promptHash: typeof value.promptHash === 'string' ? value.promptHash : null
   }
+}
+
+function parseContext(raw: unknown): AgentContext | null {
+  const value = raw as Partial<AgentContext> | null | undefined
+  if (typeof value?.usedTokens !== 'number' || typeof value.windowTokens !== 'number' || value.windowTokens <= 0) return null
+  return { usedTokens: value.usedTokens, windowTokens: value.windowTokens }
+}
+
+function parseCommands(raw: unknown): StoreFile['commands'] {
+  const out: StoreFile['commands'] = {}
+  if (typeof raw !== 'object' || raw === null) return out
+  for (const [key, list] of Object.entries(raw as Record<string, unknown>)) {
+    if (!Array.isArray(list)) continue
+    const commands: CachedCommand[] = []
+    for (const item of list as Partial<CachedCommand>[]) {
+      if (typeof item?.name === 'string' && typeof item.description === 'string') {
+        commands.push({ name: item.name, description: item.description, builtin: item.builtin === true })
+      }
+    }
+    out[key] = commands
+  }
+  return out
+}
+
+function parseWindows(raw: unknown): StoreFile['windows'] {
+  const out: StoreFile['windows'] = {}
+  if (typeof raw !== 'object' || raw === null) return out
+  for (const [model, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value === 'number' && value > 0) out[model] = value
+  }
+  return out
 }
 
 function parseUsage(raw: unknown): StoreFile['usage'] {
@@ -95,7 +133,14 @@ export function parseStoreFile(raw: unknown): StoreFile {
       if (agent) agents.push(agent)
     }
   }
-  return { agents, repos: strings(value.repos), hidden: strings(value.hidden), usage: parseUsage(value.usage) }
+  return {
+    agents,
+    repos: strings(value.repos),
+    hidden: strings(value.hidden),
+    usage: parseUsage(value.usage),
+    commands: parseCommands(value.commands),
+    windows: parseWindows(value.windows)
+  }
 }
 
 // agents.json holds the agent list; agents/<id>.jsonl holds each agent's transcript, one event version per line.
@@ -159,6 +204,28 @@ export class AgentStore {
 
   setUsage(provider: AgentProvider, windows: UsageWindow[]): void {
     this.data.usage = { ...this.data.usage, [provider]: windows }
+    this.scheduleSave()
+  }
+
+  cachedCommands(cwd: string): CachedCommand[] {
+    return this.data.commands[cwd] ?? []
+  }
+
+  setCachedCommands(cwd: string, commands: CachedCommand[]): void {
+    const next: StoreFile['commands'] = { [cwd]: commands }
+    for (const [key, value] of Object.entries(this.data.commands)) {
+      if (key !== cwd && Object.keys(next).length < COMMAND_DIRS_CAP) next[key] = value
+    }
+    this.data.commands = next
+    this.scheduleSave()
+  }
+
+  contextWindow(model: string): number | null {
+    return this.data.windows[model] ?? null
+  }
+
+  setContextWindows(windows: Record<string, number>): void {
+    this.data.windows = { ...this.data.windows, ...windows }
     this.scheduleSave()
   }
 

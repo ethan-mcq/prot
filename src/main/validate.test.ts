@@ -39,7 +39,7 @@ describe('parsePromptKind', () => {
 })
 
 describe('agent parsers', () => {
-  const start = { provider: 'codex', repoPath: '/tmp/repo', prompt: 'Fix it', model: 'gpt-6-astra', effort: 'xhigh', permission: 'workspace-write', worktree: true }
+  const start = { provider: 'codex', folder: '/tmp/repo', prompt: 'Fix it', model: 'gpt-6-astra', effort: 'xhigh', permission: 'workspace-write', worktree: true, attachments: [] }
 
   it('accepts a start input and a Claude alias model', () => {
     expect(parseAgentStartInput(start)).toEqual(start)
@@ -48,7 +48,9 @@ describe('agent parsers', () => {
 
   it.each([
     [{ provider: 'gemini' }, /Provider/],
-    [{ repoPath: 'relative/repo' }, /absolute/],
+    [{ folder: 'relative/repo' }, /absolute/],
+    [{ attachments: [{ path: 'a.png', name: 'a.png', mime: 'image/png', size: 1 }] }, /attachment path/],
+    [{ attachments: 'a.png' }, /array/],
     [{ prompt: '   ' }, /must not be empty/],
     [{ model: 'gpt"; rm' }, /Invalid model/],
     [{ effort: 'high" sandbox="x' }, /Invalid effort/],

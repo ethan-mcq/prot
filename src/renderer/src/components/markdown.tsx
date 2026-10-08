@@ -53,6 +53,20 @@ function imageHost(src: string | undefined): { host: string | null; allowed: boo
   }
 }
 
+function MarkdownImage({ src, alt }: { src: string | undefined; alt: string | undefined }) {
+  const { host, allowed } = imageHost(src)
+  if (allowed) return <img src={src} alt={alt ?? ''} className="my-1 inline-block max-w-full rounded-[6px]" />
+  return (
+      <span
+        data-image-chip
+        title={typeof src === 'string' ? src : undefined}
+        className="inline-flex items-center rounded-[5px] border border-pane-border bg-muted px-1.5 align-middle font-mono text-[11px] leading-[18px] font-normal text-muted-foreground in-[a]:bg-card in-[a]:text-foreground in-[a]:hover:border-frame in-[a]:hover:bg-accent"
+      >
+        {alt || host || 'image'}
+      </span>
+    )
+}
+
 const components: Components = {
   a: ({ href, children }) => (
     <a
@@ -93,19 +107,7 @@ const components: Components = {
   ),
   th: ({ children }) => <th className="border-b px-2 py-1 font-medium">{children}</th>,
   td: ({ children }) => <td className="border-b px-2 py-1 align-top">{children}</td>,
-  img: ({ src, alt }) => {
-    const { host, allowed } = imageHost(typeof src === 'string' ? src : undefined)
-    if (allowed) return <img src={src} alt={alt ?? ''} className="my-1 inline-block max-w-full rounded-[6px]" />
-    return (
-      <span
-        data-image-chip
-        title={typeof src === 'string' ? src : undefined}
-        className="inline-flex items-center rounded-[5px] border border-pane-border bg-muted px-1.5 align-middle font-mono text-[11px] leading-[18px] font-normal text-muted-foreground in-[a]:bg-card in-[a]:text-foreground in-[a]:hover:border-frame in-[a]:hover:bg-accent"
-      >
-        {alt || host || 'image'}
-      </span>
-    )
-  },
+  img: ({ src, alt }) => <MarkdownImage src={typeof src === 'string' ? src : undefined} alt={alt} />,
   source: () => null,
   sup: ({ children }) => <sup className="text-[11px] text-muted-foreground">{children}</sup>,
   details: ({ children }) => (
@@ -116,10 +118,31 @@ const components: Components = {
 }
 
 // GitHub renders a single newline in comments and descriptions as a line break; our own prose does not.
-export function Markdown({ children, className, github = false }: { children: string; className?: string; github?: boolean }) {
+// image maps a markdown image src to a URL prot may load (agent images); null keeps the chip.
+export function Markdown({
+  children,
+  className,
+  github = false,
+  image
+}: {
+  children: string
+  className?: string
+  github?: boolean
+  image?: (src: string) => string | null
+}) {
+  const resolved: Components = image
+    ? {
+        ...components,
+        img: ({ src, alt }) => {
+          const url = typeof src === 'string' ? image(src) : null
+          if (url) return <img src={url} alt={alt ?? ''} className="my-1 inline-block max-h-80 max-w-full rounded-[6px]" />
+          return <MarkdownImage src={typeof src === 'string' ? src : undefined} alt={alt} />
+        }
+      }
+    : components
   return (
     <div className={cn('text-sm leading-6 [overflow-wrap:anywhere]', className)}>
-      <ReactMarkdown remarkPlugins={github ? [remarkGfm, remarkBreaks] : [remarkGfm]} rehypePlugins={[rehypeRaw, rehypeSanitize]} components={components}>
+      <ReactMarkdown remarkPlugins={github ? [remarkGfm, remarkBreaks] : [remarkGfm]} rehypePlugins={[rehypeRaw, rehypeSanitize]} components={resolved}>
         {normalizeGithubHtml(children)}
       </ReactMarkdown>
     </div>

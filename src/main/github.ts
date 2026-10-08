@@ -26,7 +26,7 @@ import {
   type RawSearchResponse,
   type RawUser
 } from './github-map'
-import { webOrigin, type AttachmentLink } from './attachment-links'
+import { applySigned, needsSigning, signingMarkdown, webOrigin, type AttachmentLink } from './attachment-links'
 
 const MAX_FILE_PAGES = 30
 // Adds body_html, whose image links are signed and fetchable, next to the raw markdown body.
@@ -131,15 +131,34 @@ export class GitHubClient {
       this.json<RawReviewComment[]>(`${base}/pulls/${ref.number}/comments`, list),
       this.json<RawReview[]>(`${base}/pulls/${ref.number}/reviews`, list)
     ])
+    const web = webOrigin(this.baseUrl)
     return {
       detail: toPullDetail(ref, viewerLogin, raw, files, comments, reviews),
-      attachments: descriptionAttachments(raw, webOrigin(this.baseUrl))
+      attachments: await this.signAssets(ref, descriptionAttachments(raw, web, this.baseUrl), web)
+    }
+  }
+
+  // Rendering unsigned assets through GitHub's markdown API signs them; if that fails they are kept and fail to import.
+  private async signAssets(ref: PullRef, links: AttachmentLink[], web: string): Promise<AttachmentLink[]> {
+    const unsigned = links.filter((link) => needsSigning(link, web))
+    if (unsigned.length === 0) return links
+    try {
+      const res = await this.request('/markdown', {
+        method: 'POST',
+        body: { text: signingMarkdown(unsigned), mode: 'gfm', context: `${ref.owner}/${ref.repo}` },
+        accept: 'text/html'
+      })
+      return applySigned(links, await res.text(), web)
+    } catch {
+      return links
     }
   }
 
   // Only GitHub's own hosts get the token. Signed githubusercontent URLs need none, and other hosts must never see it.
   attachmentHeaders(url: URL): Record<string, string> {
-    if (url.origin !== new URL(this.baseUrl).origin && url.origin !== webOrigin(this.baseUrl)) return {}
+    const api = new URL(this.baseUrl).origin
+    if (url.origin !== api && url.origin !== webOrigin(this.baseUrl)) return {}
+    if (url.origin === api) return { Authorization: `Bearer ${this.token}`, Accept: 'application/vnd.github.raw' }
     return { Authorization: `Bearer ${this.token}` }
   }
 

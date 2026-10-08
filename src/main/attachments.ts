@@ -259,7 +259,7 @@ export class AttachmentService {
   private async download(dir: string, link: AttachmentLink, limit: number, signal: AbortSignal): Promise<Download> {
     let res: Response
     try {
-      res = await this.fetchFollowing(link.url, AbortSignal.any([signal, AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS)]))
+      res = await this.fetchFollowing(link.source ?? link.url, AbortSignal.any([signal, AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS)]))
     } catch (error) {
       if (signal.aborted) throw error
       return { status: 'failed' }
@@ -269,6 +269,11 @@ export class AttachmentService {
       return { status: 'failed' }
     }
     const contentType = res.headers.get('content-type')
+    // No attachment is a web page; GitHub answers an asset it won't serve with its sign-in page.
+    if (contentType?.split(';')[0]?.trim().toLowerCase() === 'text/html') {
+      await res.body.cancel()
+      return { status: 'failed' }
+    }
     const declared = Number(res.headers.get('content-length') ?? '')
     if (Number.isFinite(declared) && declared > limit) {
       await res.body.cancel()

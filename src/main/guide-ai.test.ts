@@ -51,6 +51,20 @@ describe('GuideService cache', () => {
   })
 })
 
+describe('GuideService cached overview', () => {
+  it('reads the risk level and synopsis of a guide cached before the overview became one goal sentence', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'prot-guides-'))
+    const ref = capyStoryPull.summary.ref
+    const story = buildStoryGuide(capyStoryPull, capyStoryIndex)
+    const overview = { risk: { level: 'high', reason: 'Every share goes through takeShare.' }, synopsis: 'Routes Android shares into a thread.' }
+    writeFileSync(join(dir, cacheName(ref)), JSON.stringify({ ...story, overview, source: 'ai', coverage: {}, promptHash: 'd1a090fa9228' }))
+
+    const guide = await serviceFor(dir).get(ref, false)
+
+    expect(guide.overview).toEqual({ risk: 'high', goal: 'Routes Android shares into a thread.' })
+  })
+})
+
 function cacheName(ref: PullRef): string {
   return `${ref.owner}__${ref.repo}__${ref.number}.json`
 }
@@ -84,8 +98,8 @@ describe('GuideService forget', () => {
     release()
     const guide = await loading
 
-    expect({ synopsis: guide.overview.synopsis === story.overview.synopsis, files: readdirSync(dir).sort() }).toEqual({
-      synopsis: true,
+    expect({ goal: guide.overview.goal === story.overview.goal, files: readdirSync(dir).sort() }).toEqual({
+      goal: true,
       files: []
     })
   })

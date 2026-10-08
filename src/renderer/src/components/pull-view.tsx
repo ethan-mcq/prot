@@ -352,7 +352,7 @@ function storyContext(session: ReviewSession): StoryContext {
     }
     return { title: chapter.title, cards, files: chapter.cards.length === 0 ? chapter.files : [] }
   })
-  return { risk: overview.risk, synopsis: overview.synopsis, sections }
+  return { risk: overview.risk, goal: overview.goal, sections }
 }
 
 function TitleButton({ className, ...props }: ComponentProps<'button'>) {

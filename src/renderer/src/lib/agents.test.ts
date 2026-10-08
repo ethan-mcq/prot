@@ -42,6 +42,7 @@ function agent(patch: Partial<AgentSummary>): AgentSummary {
     pr: null,
     changes: null,
     costUsd: null,
+    context: null,
     turnStartedAt: null,
     ...patch
   }
@@ -168,7 +169,7 @@ describe('composer choice', () => {
   })
 
   it('keeps a stored choice that is still valid', () => {
-    const choice = resolveChoice([provider({}), codex], [{ path: '/r', name: 'r', branch: null }], {
+    const choice = resolveChoice([provider({}), codex], [{ path: '/r', name: 'r', branch: null, git: true }], {
       provider: 'codex',
       model: 'gpt',
       effort: 'low',
@@ -180,7 +181,7 @@ describe('composer choice', () => {
   })
 
   it('falls back to a signed-in provider and drops what no longer applies', () => {
-    const choice = resolveChoice([provider({}), { ...codex, signedIn: false }], [{ path: '/x', name: 'x', branch: null }], {
+    const choice = resolveChoice([provider({}), { ...codex, signedIn: false }], [{ path: '/x', name: 'x', branch: null, git: true }], {
       provider: 'codex',
       model: 'gpt',
       permission: 'read-only',

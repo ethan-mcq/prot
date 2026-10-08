@@ -17,6 +17,8 @@ import type {
   AgentChange,
   AgentDetail,
   AgentFileChange,
+  AgentAttachment,
+  AgentCommand,
   AgentInstructions,
   AgentOpenTarget,
   AgentRepo,
@@ -86,7 +88,7 @@ export interface ProtApi {
     start(input: AgentStartInput): Promise<AgentSummary>
     get(id: string): Promise<AgentDetail>
     // Sends a follow-up turn. On a session started outside prot this forks it into a new prot agent and resolves that agent.
-    send(id: string, prompt: string): Promise<AgentSummary>
+    send(id: string, prompt: string, attachments: AgentAttachment[]): Promise<AgentSummary>
     stop(id: string): Promise<void>
     markRead(id: string): Promise<void>
     // Hides the agent from the dash; its worktree and branch stay.
@@ -95,8 +97,14 @@ export interface ProtApi {
     removeWorktree(id: string): Promise<void>
     changes(id: string): Promise<AgentFileChange[]>
     diff(id: string, path: string): Promise<string>
-    // Opens a folder picker and adds the chosen git repo; null when cancelled.
-    addRepo(): Promise<AgentRepo | null>
+    // Opens a folder picker and adds the chosen folder (its repo root when inside a git repo); null when cancelled.
+    addFolder(): Promise<AgentRepo | null>
+    // The skills and commands either CLI would load in the folder, plus the skills folder's own.
+    commands(folder: string): Promise<AgentCommand[]>
+    // A file dialog; copies the picked files under userData. Empty when cancelled.
+    pickAttachments(): Promise<AgentAttachment[]>
+    // Saves pasted or dropped bytes as an attachment.
+    saveAttachment(name: string, data: Uint8Array): Promise<AgentAttachment>
     open(id: string, target: AgentOpenTarget): Promise<void>
     instructions(): Promise<AgentInstructions>
     chooseInstructionsFolder(): Promise<AgentInstructions>
@@ -154,7 +162,10 @@ export const IPC = {
   agentsRemoveWorktree: 'agents:remove-worktree',
   agentsChanges: 'agents:changes',
   agentsDiff: 'agents:diff',
-  agentsAddRepo: 'agents:add-repo',
+  agentsAddFolder: 'agents:add-folder',
+  agentsCommands: 'agents:commands',
+  agentsPickAttachments: 'agents:pick-attachments',
+  agentsSaveAttachment: 'agents:save-attachment',
   agentsOpen: 'agents:open',
   agentsChanged: 'agents:changed',
   agentsInstructions: 'agents:instructions',

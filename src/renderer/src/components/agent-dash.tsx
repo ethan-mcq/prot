@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ArrowUp, Bot, Folder, FolderGit2, GitBranch, LoaderCircle, Plus, RefreshCw, ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import type { AgentRepo, AgentsState, AgentSummary, ProviderInfo } from '@shared/agents'
@@ -16,6 +16,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { Frame, PaneButton, PaneHeader } from '@/components/pane'
 import { ProviderMark } from '@/components/agent-bits'
+import { AttachButton, AttachmentStrip, useAttachments, useCommands, useSlashMenu } from '@/components/agent-composer'
 import {
   chooseModel,
   effortLabel,
@@ -33,7 +34,7 @@ import {
 } from '@/lib/agents'
 import { cn, errorMessage } from '@/lib/utils'
 
-const ADD_REPO = '__add_repo__'
+const ADD_FOLDER = '__add_folder__'
 const PICKER =
   'h-7 gap-1.5 rounded-[6px] border-0 bg-transparent px-2 font-mono text-[11.5px] text-muted-foreground shadow-none hover:bg-accent hover:text-foreground dark:bg-transparent dark:hover:bg-accent'
 
@@ -89,7 +90,7 @@ export function AgentDash({
             <WorkingTile state={state} onSelect={onSelect} />
             <SubscriptionsTile providers={state.providers} />
             <WorktreesTile agents={state.agents} onSelect={onSelect} onRemoved={() => void store.reload()} />
-            <ReposTile repos={state.repos} onUse={(repoPath) => update({ repoPath })} />
+            <FoldersTile repos={state.repos} onUse={(repoPath) => update({ repoPath })} />
           </div>
         )}
       </div>
@@ -112,17 +113,24 @@ function Composer({
 }) {
   const [prompt, setPrompt] = useState('')
   const [starting, setStarting] = useState(false)
+  const textarea = useRef<HTMLTextAreaElement>(null)
+  const attachments = useAttachments()
+  const commands = useCommands(choice?.repoPath ?? null)
+  const slash = useSlashMenu({ text: prompt, setText: setPrompt, textarea, commands, provider: choice?.provider ?? 'claude', placement: 'below' })
   const info = state.providers.find((p) => p.provider === choice?.provider)
-  const ready = choice !== null && info !== undefined && providerReady(info) && choice.repoPath !== null && prompt.trim().length > 0 && !starting
+  const folder = state.repos.find((repo) => repo.path === choice?.repoPath)
+  const worktree = choice?.worktree !== false && folder?.git !== false
+  const ready =
+    choice !== null && info !== undefined && providerReady(info) && choice.repoPath !== null && prompt.trim().length > 0 && !starting && !attachments.busy
 
-  async function addRepo() {
+  async function addFolder() {
     try {
-      const repo = await window.prot.agents.addRepo()
+      const repo = await window.prot.agents.addFolder()
       if (!repo) return
       store.addRepo(repo)
       onChange({ repoPath: repo.path })
     } catch (error) {
-      toast.error('Could not add the repo', { description: errorMessage(error) })
+      toast.error('Could not add the folder', { description: errorMessage(error) })
     }
   }
 
@@ -132,15 +140,17 @@ function Composer({
     try {
       const agent = await window.prot.agents.start({
         provider: choice.provider,
-        repoPath: choice.repoPath,
+        folder: choice.repoPath,
         prompt: prompt.trim(),
         model: choice.model,
         effort: choice.effort,
         permission: choice.permission,
-        worktree: choice.worktree
+        worktree,
+        attachments: attachments.items
       })
       store.upsert(agent)
       setPrompt('')
+      attachments.clear()
       onStarted(agent.id)
     } catch (error) {
       toast.error('Could not start the agent', { description: errorMessage(error) })
@@ -152,14 +162,29 @@ function Composer({
   const anyReady = state.providers.some(providerReady)
   return (
     <div className="mx-auto mt-6 w-full max-w-[680px]">
-      <div className="rounded-[10px] border border-pane-border bg-muted/40 p-1.5 transition-colors focus-within:border-frame">
+      <div
+        {...attachments.dropProps}
+        className={cn(
+          'relative rounded-[10px] border border-pane-border bg-muted/40 p-1.5 transition-colors focus-within:border-frame',
+          attachments.dragging && 'border-frame bg-selection/40'
+        )}
+      >
+        <AttachmentStrip attachments={attachments} />
         <Textarea
+          ref={textarea}
           autoFocus
           aria-label="Task"
-          placeholder="Describe a task, a bug to fix, an idea to try…"
+          placeholder="Describe a task, a bug to fix, an idea to try… / for skills"
           value={prompt}
-          onChange={(event) => setPrompt(event.target.value)}
+          {...slash.inputProps}
+          onChange={(event) => {
+            setPrompt(event.target.value)
+            slash.track(event.target)
+          }}
+          onSelect={(event) => slash.track(event.currentTarget)}
+          onPaste={attachments.onPaste}
           onKeyDown={(event) => {
+            if (slash.onKeyDown(event)) return
             if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
               event.preventDefault()
               void start()
@@ -168,12 +193,23 @@ function Composer({
           rows={3}
           className="max-h-60 min-h-[76px] resize-none border-0 bg-transparent px-2 py-1.5 font-mono text-[12.5px] leading-5 shadow-none focus-visible:ring-0 dark:bg-transparent"
         />
+        {slash.menu}
         <div className="flex flex-wrap items-center gap-0.5 pt-1">
-          <RepoPicker repos={state.repos} value={choice?.repoPath ?? null} onChange={(repoPath) => onChange({ repoPath })} onAdd={() => void addRepo()} />
-          <Select value={choice?.worktree === false ? 'local' : 'worktree'} onValueChange={(value) => onChange({ worktree: value === 'worktree' })}>
-            <SelectTrigger aria-label="Checkout" size="sm" className={PICKER}>
+          <AttachButton attachments={attachments} />
+          <FolderPicker repos={state.repos} value={choice?.repoPath ?? null} onChange={(repoPath) => onChange({ repoPath })} onAdd={() => void addFolder()} />
+          <Select
+            value={worktree ? 'worktree' : 'local'}
+            disabled={folder?.git === false}
+            onValueChange={(value) => onChange({ worktree: value === 'worktree' })}
+          >
+            <SelectTrigger
+              aria-label="Checkout"
+              size="sm"
+              className={PICKER}
+              title={folder?.git === false ? 'Not a git repository: the agent runs in the folder itself, without a worktree' : undefined}
+            >
               <GitBranch aria-hidden className="size-3.5" />
-              {choice?.worktree === false ? 'Local checkout' : 'New worktree'}
+              {folder?.git === false ? 'In folder' : worktree ? 'New worktree' : 'Local checkout'}
             </SelectTrigger>
             <SelectContent position="popper" align="start">
               <SelectItem value="worktree">New worktree</SelectItem>
@@ -200,14 +236,16 @@ function Composer({
         {!anyReady
           ? 'Sign in to Claude Code or Codex in a terminal, then refresh.'
           : choice?.repoPath === null
-            ? 'Add a repo to start an agent in it.'
-            : '⌘↵ to start'}
+            ? 'Add a folder to start an agent in it.'
+            : folder?.git === false
+              ? 'Not a git repository: no worktree, changes or PR · ⌘↵ to start'
+              : '/ for skills · ⌘↵ to start'}
       </p>
     </div>
   )
 }
 
-function RepoPicker({
+function FolderPicker({
   repos,
   value,
   onChange,
@@ -223,13 +261,13 @@ function RepoPicker({
     <Select
       value={value ?? ''}
       onValueChange={(next) => {
-        if (next === ADD_REPO) onAdd()
+        if (next === ADD_FOLDER) onAdd()
         else onChange(next)
       }}
     >
-      <SelectTrigger aria-label="Repository" size="sm" className={cn(PICKER, !current && 'text-foreground')} title={current?.path}>
+      <SelectTrigger aria-label="Folder" size="sm" className={cn(PICKER, !current && 'text-foreground')} title={current?.path}>
         <Folder aria-hidden className="size-3.5" />
-        {current?.name ?? 'Choose repo'}
+        {current?.name ?? 'Choose folder'}
       </SelectTrigger>
       <SelectContent position="popper" align="start" className="max-w-[360px]">
         {repos.map((repo) => (
@@ -239,9 +277,9 @@ function RepoPicker({
           </SelectItem>
         ))}
         {repos.length > 0 && <SelectSeparator />}
-        <SelectItem value={ADD_REPO}>
+        <SelectItem value={ADD_FOLDER}>
           <Plus aria-hidden className="size-3.5" />
-          Add repo…
+          Add folder…
         </SelectItem>
       </SelectContent>
     </Select>
@@ -563,11 +601,11 @@ function WorktreesTile({
   )
 }
 
-function ReposTile({ repos, onUse }: { repos: AgentRepo[]; onUse: (path: string) => void }) {
+function FoldersTile({ repos, onUse }: { repos: AgentRepo[]; onUse: (path: string) => void }) {
   return (
-    <Tile index={4} title="Recent repos" count={repos.length}>
+    <Tile index={4} title="Recent folders" count={repos.length}>
       {repos.length === 0 ? (
-        <Empty>Add a repo from the composer.</Empty>
+        <Empty>Add a folder from the composer.</Empty>
       ) : (
         <ul className="space-y-px">
           {repos.map((repo) => (

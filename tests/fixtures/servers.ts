@@ -180,9 +180,8 @@ const NATIVE = 'packages/mobile/modules/capy-share/index.ts'
 
 export const aiGuide = {
   overview: {
-    risk: { level: 'medium', reason: 'Every Android share now runs through CapyShareModule.takeShare, which no test exercises.' },
-    synopsis:
-      'Android hands shared intents to a new native module that stages the items. The share inbox reads them through the CapyShare bridge and the sheet uploads them to a thread. A config plugin registers the share extension at prebuild.'
+    risk: 'medium',
+    goal: 'Lets Android users share photos and text from other apps straight into a Capy thread.'
   },
   caption: 'Shared content reaches a thread',
   sections: [

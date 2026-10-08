@@ -15,7 +15,7 @@ prot never reads or forwards subscription credentials. It runs the official CLIs
 | Continue an outside session | `--resume <id> --fork-session` (the original stays untouched; the new id comes from the `init` line) | same options, then `fork <id> -- <prompt>` |
 | Stop | SIGINT, then SIGTERM after 5 s | same |
 
-The prompt always follows `--`, so a prompt starting with `-` is not read as an option. `codex exec resume` and `fork` reject `-s`, `-C` and `--approve-for-me` after the subcommand, so every Codex option goes before it. Each turn's stdin is `/dev/null`.
+The prompt always follows `--`, so a prompt starting with `-` is not read as an option. `codex exec resume` and `fork` reject `-s`, `-C` and `--approve-for-me` after the subcommand, so every Codex option goes before it. Each turn's stdin is `/dev/null`, except a Claude turn with attached images (see Attachments).
 
 Children run with the login shell's PATH (resolved once, `$SHELL -ilc 'printf %s "$PATH"'`), so agents find git, gh, node and the rest the same way the desktop apps do. Each child runs in its own process group and signals go to the group, so the commands an agent started stop with it. All children get SIGTERM when prot quits; agents that were running are marked `stopped` on the next launch. A turn that exits non-zero without a result is `failed`, with the last stderr lines as an error event.
 
@@ -33,9 +33,39 @@ Children run with the login shell's PATH (resolved once, `$SHELL -ilc 'printf %s
 - Claude: Opus 5.5, Sonnet 5.5, Haiku 5.5, Fable 5.1 (`claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5`, `claude-fable-5-1`); efforts low, medium, high, xhigh, max. The default model and effort come from `$CLAUDE_CONFIG_DIR/settings.json` (`model`, `effortLevel`) when set, else Opus 5.5 at high. A settings model that is an alias, such as `opus[1m]`, is offered as-is at the top of the list.
 - Codex: the `visibility: "list"` entries of `$CODEX_HOME/models_cache.json`, by `priority`, with their `supported_reasoning_levels`. The default comes from the top-level `model` and `model_reasoning_effort` of `$CODEX_HOME/config.toml`.
 
+## Folders
+
+An agent starts in any folder. A folder inside a git repo is stored as the repo root; any other folder is used as-is. In a folder that is not a git repo the agent runs in the folder itself (`branch` null, no worktree: the composer's checkout picker is disabled with a hint), and the git-only parts stay empty: no changes panel entries, no PR lookup. Codex already runs with `--skip-git-repo-check`. The composer's "Folder" picker lists recent folders (`agents.json` `repos`, newest 20) and "Add folder…" opens a folder dialog.
+
 ## Worktrees
 
-With "New worktree" on, prot runs `git -C <repo> worktree add -b prot/<slug> ~/.prot/worktrees/<repo name>/<slug> HEAD` before the first turn (`PROT_WORKTREE_ROOT` replaces `~/.prot/worktrees`, for tests). `<slug>` is the first words of the prompt plus a short random suffix. The base is the repo's current branch. Removing a worktree runs `git worktree remove --force` and leaves the branch; prot only removes worktrees under its own root.
+With "New worktree" on (git folders only), prot runs `git -C <repo> worktree add -b prot/<slug> ~/.prot/worktrees/<repo name>/<slug> HEAD` before the first turn (`PROT_WORKTREE_ROOT` replaces `~/.prot/worktrees`, for tests). `<slug>` is the first words of the prompt plus a short random suffix. The base is the repo's current branch. Removing a worktree runs `git worktree remove --force` and leaves the branch; prot only removes worktrees under its own root.
+
+## Skills and commands (`/`)
+
+Typing `/` in the task or follow-up box opens a listbox of commands and skills (filter as you type, ↑↓, Enter or Tab inserts, Esc closes). The agent's own CLI comes first, then the skills folder's own, then the other CLI's, which are tagged "via SKILL.md". `agents.commands(folder)` discovers them (`src/main/agents/commands.ts`):
+
+- Claude: `.claude/skills/*/SKILL.md` and `.claude/commands/**/*.md` in the folder and each ancestor up to `$HOME`, `$CLAUDE_CONFIG_DIR/skills` and `commands`, synced skills, enabled plugins' `skills` and `commands` (namespaced `plugin:name`), the skills folder's `.claude/skills` (loaded through `--add-dir`), `/compact`, and the newest `system/commands_changed` list a Claude turn reported for that folder (cached in `agents.json`). Interactive commands that do nothing headless (`/clear`, `/model`, `/config`, `/login`, …) are left out.
+- Codex: `.agents/skills` and `.codex/skills` in the folder and its ancestors, `$CODEX_HOME/skills` (3 levels, `.system` included), enabled plugins' skills, `$CODEX_HOME/prompts/*.md` as `prompts:<name>`.
+- The skills folder (`settings.agentFolder`): `skills/*/SKILL.md`, `commands/**/*.md` and `.claude/commands/**/*.md`, which neither CLI loads on its own.
+
+Name and description come from the frontmatter, else the file name and first line. On send (`expandCommands`, `src/shared/agent-commands.ts`), a `/name` the agent's CLI loads stays `/name` for Claude at the start of the prompt (elsewhere it becomes "Use the name skill."), becomes `$name` for a Codex skill, and a Codex custom prompt is inlined with `$ARGUMENTS` / `$1..$9` from the rest of the line. Any other known `/name` becomes "Read and follow the skill at <path>.". Unknown `/words` are left alone. The transcript keeps what was typed; only the CLI sees the expanded text.
+
+## Context
+
+`AgentSummary.context` is `{ usedTokens, windowTokens }` or null, shown as a ring at the bottom right of the follow-up box (amber from 70 %, red from 90 %, tooltip "250k / 1M tokens (25%)").
+
+- Claude: used is input + cache read + cache creation + output tokens of the newest assistant message's `usage`; the window is `result.modelUsage[model].contextWindow`, remembered per model in `agents.json`, else 200k (1M for `[1m]` models).
+- Codex: the newest `token_count` in the thread's rollout file, read after each turn: `info.last_token_usage.total_tokens` of `info.model_context_window`.
+- Outside sessions: the same, from their files.
+
+## Attachments
+
+The paperclip, paste and drag-drop in either box copy files to `userData/agents/attachments/<random>/<name>` (20 MB each, at most 20 per message, name sanitized). A send only accepts attachments that resolve to files under that folder. Images (png, jpeg, gif, webp) go natively: Claude runs with `--input-format stream-json` and prot writes one user message on stdin (a text block, then a base64 image block per image) and closes it; Codex gets `--image=<path>` per image (before the thread id on `resume` / `fork`). Other files are listed in the prompt as "Attached files:" with their paths. The user event keeps the attachments and shows image thumbnails.
+
+## Images back
+
+Images in Claude `tool_result` blocks are written to `userData/agents/images/<sha256>.<ext>` and attached to the tool event's `images`; absolute paths of existing image files in assistant text or tool output (markdown images or bare paths) are attached too, as are Codex `ImageView` / `ImageGeneration` items from rollouts. They render as thumbnails under the text or the run of tool calls (click to enlarge), and markdown images of those paths render inline. The renderer loads them through `prot-agent-file://f/<encoded path>`, which main serves only for image files (by extension and magic bytes) whose paths appeared in an event or attachment it loaded; everything else is a 404.
 
 ## Events
 

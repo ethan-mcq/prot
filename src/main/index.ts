@@ -2,7 +2,9 @@ import { join } from 'node:path'
 import { app, BrowserWindow, protocol } from 'electron'
 import { IPC } from '@shared/ipc'
 import { AgentManager } from './agents/manager'
+import { serveAgentFile } from './agents/files'
 import { AgentStore } from './agents/store'
+import { AGENT_FILE_SCHEME } from '@shared/agents'
 import { ATTACHMENT_SCHEME, AttachmentService, serveAttachment } from './attachments'
 import { AuthService } from './auth'
 import { ChatService } from './chat'
@@ -28,7 +30,8 @@ const CACHE_SWEEP_MS = 6 * 60 * 60 * 1000
 
 app.setName('prot')
 protocol.registerSchemesAsPrivileged([
-  { scheme: ATTACHMENT_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }
+  { scheme: ATTACHMENT_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
+  { scheme: AGENT_FILE_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } }
 ])
 
 if (!app.requestSingleInstanceLock()) {
@@ -64,10 +67,11 @@ function boot(): void {
   const guide = new GuideService(secrets, settings, prompts, pulls, code, join(userData, 'guides'))
   const cache = new PullCache(guide, attachments)
   const chat = new ChatService(secrets, settings, pulls, prompts, broadcast)
-  const agents = new AgentManager(new AgentStore(userData), auth, settings, prompts, broadcast)
+  const agents = new AgentManager(new AgentStore(userData), auth, settings, prompts, broadcast, join(userData, 'agents'))
   agents.boot()
   app.on('before-quit', () => agents.shutdown())
   protocol.handle(ATTACHMENT_SCHEME, (request) => serveAttachment(attachmentsRoot, request.url))
+  protocol.handle(AGENT_FILE_SCHEME, (request) => serveAgentFile(request.url, (path) => agents.fileAllowed(path)))
 
   poller.onClosed((pull) => {
     cache.forget(pull.ref).catch((error: unknown) => console.error('Could not delete the cache for a closed PR', error))

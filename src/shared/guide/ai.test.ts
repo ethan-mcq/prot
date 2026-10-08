@@ -29,7 +29,7 @@ describe('firstSentence', () => {
 
 describe('parseAiGuide', () => {
   const raw = {
-    overview: { risk: { level: 'severe', reason: 'Made up.' }, synopsis: '  Shares items from other apps into a thread. It adds a native module. ' },
+    overview: { risk: 'severe', goal: '  Shares items from other apps into a thread. It adds a native module. ' },
     caption: 'How a shared item reaches a thread',
     sections: [
       {
@@ -105,14 +105,14 @@ describe('parseAiGuide', () => {
   it('keeps a known risk level and falls back to the estimated risk for an unknown one', () => {
     const unknown = parseAiGuide(raw, capyStoryPull, story, PROMPT_HASH).overview
     const known = parseAiGuide(
-      { ...raw, overview: { ...raw.overview, risk: { level: 'high', reason: 'Every share now goes through takeShare.' } } },
+      { ...raw, overview: { ...raw.overview, risk: 'high' } },
       capyStoryPull,
       story,
       PROMPT_HASH
     ).overview
     expect({ unknown, known: known.risk }).toEqual({
-      unknown: { risk: story.overview.risk, synopsis: 'Shares items from other apps into a thread.' },
-      known: { level: 'high', reason: 'Every share now goes through takeShare.' }
+      unknown: { risk: story.overview.risk, goal: 'Shares items from other apps into a thread.' },
+      known: 'high'
     })
   })
 
@@ -152,9 +152,9 @@ describe('parseAiGuide', () => {
     [null, /not a JSON object/],
     ['{"overview": ', /not valid JSON/],
     [{ sections: [] }, /missing the overview/],
-    [{ overview: { synopsis: 'x' }, sections: 'all of them' }, /sections array/],
-    [{ overview: { risk: { level: 'low', reason: 'r' } }, sections: [] }, /overview\.synopsis/],
-    [{ overview: { synopsis: 'x' }, sections: [{ title: 'Made up', symbols: ['nope.ts#x'] }] }, /none of the changed symbols/]
+    [{ overview: { goal: 'x' }, sections: 'all of them' }, /sections array/],
+    [{ overview: { risk: 'low' }, sections: [] }, /overview\.goal/],
+    [{ overview: { goal: 'x' }, sections: [{ title: 'Made up', symbols: ['nope.ts#x'] }] }, /none of the changed symbols/]
   ])('rejects unusable output %#', (input, message) => {
     expect(() => parseAiGuide(input, capyStoryPull, story, PROMPT_HASH)).toThrow(message)
   })

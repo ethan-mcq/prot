@@ -57,6 +57,46 @@ export type AgentPr = {
 
 export type AgentChanges = { files: number; additions: number; deletions: number }
 
+// Tokens in the newest request's context and the model's window.
+export type AgentContext = { usedTokens: number; windowTokens: number }
+
+// A file copied under userData/agents/attachments by pickAttachments or saveAttachment.
+export type AgentAttachment = { path: string; name: string; mime: string; size: number }
+
+export const ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024
+export const ATTACHMENTS_PER_TURN = 20
+export const IMAGE_MIMES: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp'
+}
+
+export function isImageMime(mime: string): boolean {
+  return Object.values(IMAGE_MIMES).includes(mime)
+}
+
+export const AGENT_FILE_SCHEME = 'prot-agent-file'
+
+// Main only serves image paths it has seen in a loaded agent's events or attachments.
+export function agentFileUrl(path: string): string {
+  return `${AGENT_FILE_SCHEME}://f/${encodeURIComponent(path)}`
+}
+
+// skill: SKILL.md; command: a commands/*.md; prompt: a Codex custom prompt; builtin: reported by the CLI, no file.
+export type AgentCommandKind = 'skill' | 'command' | 'prompt' | 'builtin'
+
+export type AgentCommand = {
+  // The CLI that loads it natively; null for the skills folder's own skills and commands, which neither loads.
+  provider: AgentProvider | null
+  name: string
+  description: string
+  kind: AgentCommandKind
+  // Absolute path to the SKILL.md or command file; null for built-ins.
+  path: string | null
+}
+
 export type AgentSummary = {
   id: string
   source: AgentSource
@@ -82,13 +122,15 @@ export type AgentSummary = {
   pr: AgentPr | null
   changes: AgentChanges | null
   costUsd: number | null
+  context: AgentContext | null
 }
 
 export type AgentEvent =
   // The agent system prompt version sent with the agent's turns.
   | { kind: 'system'; id: string; at: string; name: string; hash: string; text: string }
-  | { kind: 'user'; id: string; at: string; text: string }
-  | { kind: 'assistant'; id: string; at: string; text: string }
+  | { kind: 'user'; id: string; at: string; text: string; attachments?: AgentAttachment[] }
+  // images: absolute paths of image files the text points at.
+  | { kind: 'assistant'; id: string; at: string; text: string; images?: string[] }
   | { kind: 'thinking'; id: string; at: string; text: string }
   | {
       kind: 'tool'
@@ -99,6 +141,7 @@ export type AgentEvent =
       summary: string
       output: string | null
       status: 'running' | 'ok' | 'error'
+      images?: string[]
     }
   | { kind: 'error'; id: string; at: string; text: string }
   | {
@@ -115,19 +158,22 @@ export type AgentDetail = AgentSummary & { transcript: AgentEvent[] }
 
 export type AgentStartInput = {
   provider: AgentProvider
-  repoPath: string
+  // Any folder; a git repo's root when it is inside one.
+  folder: string
   prompt: string
   model: string
   effort: string
   permission: string
-  // True runs the agent in a new git worktree on a new branch; false runs it in the repo checkout itself.
+  // True runs the agent in a new git worktree on a new branch; false runs it in the folder itself.
   worktree: boolean
+  attachments: AgentAttachment[]
 }
 
 // The folder holding the user's skills and AGENTS.md; file is its topmost AGENTS.md.
 export type AgentInstructions = { folder: string | null; file: string | null }
 
-export type AgentRepo = { path: string; name: string; branch: string | null }
+// A recent folder; git is false when it is not inside a git repo.
+export type AgentRepo = { path: string; name: string; branch: string | null; git: boolean }
 
 export type AgentsState = {
   agents: AgentSummary[]

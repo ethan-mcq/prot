@@ -30,6 +30,7 @@ const agent: StoredAgent = {
   pr: null,
   changes: null,
   costUsd: null,
+  context: { usedTokens: 12000, windowTokens: 200000 },
   archived: false,
   forkedFrom: null,
   promptHash: null

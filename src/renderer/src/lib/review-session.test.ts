@@ -15,7 +15,7 @@ function guideWith(chapterCount: number): Guide {
   return {
     source: 'heuristic',
     headSha: 'abc',
-    overview: { risk: { level: 'low', reason: '' }, synopsis: '' },
+    overview: { risk: 'low', goal: '' },
     questions: [],
     flow: { caption: '', nodes: [], edges: [] },
     chapters,
@@ -107,7 +107,7 @@ describe('a pull request update while reading', () => {
 
   it('keeps the AI guide, step and open IDE, and puts the uncovered file in a trailing chapter', () => {
     const raw = {
-      overview: { risk: { level: 'low', reason: 'Small.' }, synopsis: 'Shares text into a thread.' },
+      overview: { risk: 'low', goal: 'Shares text into a thread.' },
       caption: '',
       sections: [],
       files: [{ title: 'Native share module', summary: '', files: [KOTLIN_MODULE, SWIFT_MODULE] }]
@@ -162,7 +162,7 @@ describe('the story guide arriving', () => {
     const ai = reviewReducer(quick, {
       type: 'ai/loaded',
       guide: parseAiGuide(
-        { overview: { synopsis: 'x' }, sections: [{ title: 'All of it', symbols: [onNewIntent] }], files: [] },
+        { overview: { goal: 'x' }, sections: [{ title: 'All of it', symbols: [onNewIntent] }], files: [] },
         capyStoryPull,
         story,
         'd1a090fa9228'

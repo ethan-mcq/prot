@@ -92,10 +92,12 @@ export async function seedLibrary(builtInText: string, now: string): Promise<Pro
   return { versions: [version], liveHash: version.hash, retiredBuiltIns: [] }
 }
 
+// A new shipped prompt becomes live only while a built-in is live; a saved version the user made live stays live.
 export async function reconcile(lib: PromptLibrary, builtInText: string, now: string): Promise<PromptLibrary> {
   const version = await newVersion(builtInText, now, true, null)
   if (findVersion(lib, version.hash) !== undefined || lib.retiredBuiltIns.includes(version.hash)) return lib
-  return { ...lib, versions: [...lib.versions, version] }
+  const liveHash = findVersion(lib, lib.liveHash)?.builtIn ? version.hash : lib.liveHash
+  return { ...lib, versions: [...lib.versions, version], liveHash }
 }
 
 export function livePrompt(lib: PromptLibrary): PromptVersion {

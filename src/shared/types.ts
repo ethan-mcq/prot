@@ -205,8 +205,9 @@ export const RISK_LEVELS = ['low', 'medium', 'high'] as const
 export type RiskLevel = (typeof RISK_LEVELS)[number]
 
 export type GuideOverview = {
-  risk: { level: RiskLevel; reason: string }
-  synopsis: string
+  risk: RiskLevel
+  // One sentence on what the whole pull request sets out to do.
+  goal: string
 }
 
 type GuideContent = {
@@ -323,8 +324,8 @@ export type SectionContext = {
 export type OutlineSection = { title: string; cards: CardContext[]; files: string[] }
 
 export type StoryContext = {
-  risk: GuideOverview['risk']
-  synopsis: string
+  risk: RiskLevel
+  goal: string
   sections: OutlineSection[]
 }
 

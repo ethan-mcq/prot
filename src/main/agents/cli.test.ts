@@ -16,6 +16,7 @@ import {
   parseTopLevelToml,
   parseVersion,
   PERMISSIONS,
+  claudeStdinMessage,
   type TurnSpec
 } from './cli'
 
@@ -31,6 +32,8 @@ const spec = (extra: Partial<TurnSpec>): TurnSpec => ({
   sessionId: '11111111-1111-4111-8111-111111111111',
   systemPrompt: null,
   addDirs: [],
+  stdinPrompt: false,
+  images: [],
   ...extra
 })
 
@@ -166,5 +169,18 @@ describe('agent system prompt', () => {
     expect(claude.slice(claude.indexOf('--append-system-prompt'), claude.indexOf('--'))).toEqual(['--append-system-prompt', text, '--add-dir', '/Users/me/skills'])
     const codex = codexArgs(spec({ systemPrompt: text, model: 'gpt-6-astra', sessionId: null }))
     expect(codex.slice(-4)).toEqual(['-c', 'developer_instructions="Use \\"the\\" skills.\\nBe brief."', '--', '-fix the bug'])
+  })
+})
+
+describe('attached images', () => {
+  it('moves the Claude prompt to stdin and puts Codex images before the thread id', () => {
+    expect(claudeArgs(spec({ stdinPrompt: true })).slice(-2)).toEqual(['--input-format', 'stream-json'])
+    expect(claudeArgs(spec({ stdinPrompt: true }))).not.toContain('--')
+    const first = codexArgs(spec({ images: ['/a.png'], sessionId: null }))
+    expect(first.slice(-3)).toEqual(['--image=/a.png', '--', '-fix the bug'])
+    const resumed = codexArgs(spec({ mode: 'resume', images: ['/a.png', '/b.png'], sessionId: 't1' }))
+    expect(resumed.slice(-6)).toEqual(['resume', '--image=/a.png', '--image=/b.png', 't1', '--', '-fix the bug'])
+    const line = JSON.parse(claudeStdinMessage('look', [{ mime: 'image/png', data: Buffer.from('x') }]))
+    expect(line.message.content).toEqual([{ type: 'text', text: 'look' }, { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'eA==' } }])
   })
 })

@@ -10,7 +10,8 @@ const SHOTS = process.env.PROT_SHOTS
 const OUTSIDE_CLAUDE = '3253eaf7-a224-4b39-b4a6-33ba51d8e490'
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
-type Call = { bin: 'claude' | 'codex'; argv?: string[]; cwd?: string; signal?: string }
+type Call = { bin: 'claude' | 'codex'; argv?: string[]; cwd?: string; signal?: string; stdin?: { message: { content: Record<string, unknown>[] } } }
+const PNG = 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAIElEQVR4nGPQ0DC4WR5OPMlAkmoNDQOGURtGbRgyNgAANMoTkMGIb4oAAAAASUVORK5CYII='
 
 let h: Harness
 let repoParent: string
@@ -80,12 +81,31 @@ async function pick(trigger: string, option: string | RegExp) {
   await h.page.getByRole('option', { name: option }).click()
 }
 
-async function addRepo(path: string) {
+async function nextDialog(paths: string[]) {
   await h.app.evaluate(({ dialog }, picked) => {
-    dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [picked] })) as typeof dialog.showOpenDialog
-  }, path)
-  await pick('Repository', 'Add repo…')
-  await expect(h.page.getByRole('combobox', { name: 'Repository' })).toHaveText(basename(path))
+    dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: picked })) as typeof dialog.showOpenDialog
+  }, paths)
+}
+
+async function addRepo(path: string) {
+  await nextDialog([path])
+  await pick('Folder', 'Add folder…')
+  await expect(h.page.getByRole('combobox', { name: 'Folder' })).toHaveText(basename(path))
+}
+
+async function attachImage(): Promise<string> {
+  const file = join(repoParent, 'screen.png')
+  writeFileSync(file, Buffer.from(PNG, 'base64'))
+  await nextDialog([file])
+  await h.page.getByRole('button', { name: 'Attach files' }).click()
+  const thumb = h.page.getByRole('list', { name: 'Attachments' }).getByRole('img', { name: 'screen.png' })
+  await expect(thumb).toBeVisible()
+  await expectLoaded(thumb)
+  return file
+}
+
+async function expectLoaded(image: ReturnType<Harness['page']['locator']>) {
+  await expect.poll(() => image.evaluate((element) => (element as unknown as { naturalWidth: number }).naturalWidth)).toBeGreaterThan(0)
 }
 
 async function startAgent(prompt: string) {
@@ -406,4 +426,117 @@ test('sending to a Claude app session forks it into a new prot agent that keeps 
   expect(resumedId).toMatch(UUID)
   expect(resumedId).not.toBe(OUTSIDE_CLAUDE)
   expect(resumed).not.toContain('--fork-session')
+})
+
+test('the / menu lists the agent\'s own skills first, inserts one from the other CLI and the turn reads its SKILL.md', async () => {
+  const { page } = h
+  mkdirSync(join(h.agents.claudeHome, 'skills', 'deploy-notes'), { recursive: true })
+  writeFileSync(join(h.agents.claudeHome, 'skills', 'deploy-notes', 'SKILL.md'), '---\nname: deploy-notes\ndescription: Write release notes\n---\nBody\n')
+  const skill = join(h.agents.codexHome, 'skills', 'deploy-check', 'SKILL.md')
+  mkdirSync(join(skill, '..'), { recursive: true })
+  writeFileSync(skill, '---\nname: deploy-check\ndescription: Check a deploy is safe\n---\nRun the checks.\n')
+  await openDash()
+  await addRepo(repo)
+  await pick('Checkout', 'Local checkout')
+
+  const task = page.getByRole('textbox', { name: 'Task' })
+  await task.fill('/dep')
+  const menu = page.getByRole('listbox', { name: 'Commands and skills' })
+  await expect(menu.getByRole('option')).toHaveText([/\/deploy-notes\s*Write release notes/, /\/deploy-check\s*Check a deploy is safe\s*via SKILL\.md/])
+  await expect(menu.getByRole('group')).toHaveText([/^Claude Code/, /^Codex/])
+  await settle()
+  await shot('34-agent-slash-menu')
+  await task.press('ArrowDown')
+  await expect(menu.getByRole('option', { name: /deploy-check/ })).toHaveAttribute('aria-selected', 'true')
+  await task.press('Enter')
+  await expect(menu).toHaveCount(0)
+  await expect(task).toHaveValue('/deploy-check ')
+  await task.pressSequentially('before merging')
+  await page.getByRole('button', { name: 'Start agent' }).click()
+  await expect(transcript()).toContainText('Echo: Read and follow the skill at')
+
+  // The transcript keeps what was typed; the CLI gets the expanded form.
+  await expect(transcript().getByText('/deploy-check before merging', { exact: true })).toBeVisible()
+  const argv = turns('claude')[0]?.argv ?? []
+  expect(argv.slice(-2)).toEqual(['--', `Read and follow the skill at ${skill}. before merging`])
+})
+
+test('the follow-up composer shows how full the context window is', async () => {
+  const { page } = h
+  await openDash()
+  await addRepo(repo)
+  await pick('Checkout', 'Local checkout')
+  await startAgent('Count the tokens')
+  await expect(transcript()).toContainText('Echo: Count the tokens')
+  // The fake reports 250k tokens in context and a 1M window for opus[1m].
+  const wheel = page.getByRole('meter', { name: 'Context window' })
+  await expect(wheel).toHaveAttribute('aria-valuenow', '25')
+  await expect(wheel).toHaveAttribute('title', '250k / 1M tokens (25%)')
+})
+
+test('an attached image goes to Claude as a stdin image block and to Codex as --image, with a thumbnail in the message', async () => {
+  const { page } = h
+  await openDash()
+  await addRepo(repo)
+  await pick('Checkout', 'Local checkout')
+  await attachImage()
+  await startAgent('What is on screen?')
+  await expect(transcript()).toContainText('Echo: What is on screen?')
+  await expectLoaded(transcript().getByRole('button', { name: 'Open image screen.png' }).getByRole('img'))
+
+  const [claude] = turns('claude')
+  expect(claude?.argv?.slice(-2)).toEqual(['--input-format', 'stream-json'])
+  expect(claude?.argv).not.toContain('--')
+  const content = claude?.stdin?.message.content ?? []
+  expect(content[0]).toEqual({ type: 'text', text: 'What is on screen?' })
+  expect(content[1]).toEqual({ type: 'image', source: { type: 'base64', media_type: 'image/png', data: PNG } })
+
+  await page.getByRole('button', { name: 'New agent' }).click()
+  await pick('Model', 'GPT-6-Astra')
+  await attachImage()
+  await startAgent('And now?')
+  await expect(transcript()).toContainText('Echo: And now?')
+  const codex = turns('codex')[0]?.argv ?? []
+  const image = codex.find((arg) => arg.startsWith('--image='))?.slice('--image='.length) ?? ''
+  expect(image).toMatch(/\/agents\/attachments\/[0-9a-f]{16}\/screen\.png$/)
+  expect(codex.slice(-3)).toEqual([`--image=${image}`, '--', 'And now?'])
+})
+
+test('an image a tool returns renders under the tool calls', async () => {
+  await openDash()
+  await addRepo(repo)
+  await pick('Checkout', 'Local checkout')
+  await startAgent('Show me the IMAGE')
+  await expect(transcript()).toContainText('Echo: Show me the IMAGE')
+  const thumb = transcript().getByRole('button', { name: /^Open image [0-9a-f]{64}\.png$/ })
+  await expectLoaded(thumb.getByRole('img'))
+  await thumb.click()
+  await expectLoaded(h.page.getByRole('dialog').getByRole('img'))
+  // An image file no event or attachment named is not served.
+  const other = join(repoParent, 'other.png')
+  writeFileSync(other, Buffer.from(PNG, 'base64'))
+  const load = (path: string) =>
+    h.page.evaluate(
+      `new Promise((done) => { const image = new Image(); image.onload = () => done('loaded'); image.onerror = () => done('blocked'); image.src = ${JSON.stringify(`prot-agent-file://f/${encodeURIComponent(path)}`)} })`
+    )
+  expect(await load(other)).toBe('blocked')
+})
+
+test('an agent starts in a folder that is not a git repo, without a worktree', async () => {
+  const { page } = h
+  const folder = join(realpathSync(repoParent), 'notes')
+  mkdirSync(folder)
+  await openDash()
+  await addRepo(folder)
+  const checkout = page.getByRole('combobox', { name: 'Checkout' })
+  await expect(checkout).toBeDisabled()
+  await expect(checkout).toHaveText('In folder')
+  await startAgent('Tidy these notes')
+  await expect(transcript()).toContainText('Echo: Tidy these notes')
+  expect(turns('claude')[0]?.cwd).toBe(folder)
+  await expect(header()).toContainText('notes')
+  await page.getByRole('tab', { name: 'Changes' }).click()
+  await expect(page.getByRole('complementary', { name: 'Changes' })).toContainText('No changes yet.')
+  await page.getByRole('button', { name: 'New agent' }).click()
+  await expect(page.getByRole('region', { name: 'Recent folders' }).getByRole('button', { name: 'Use notes' })).toBeVisible()
 })

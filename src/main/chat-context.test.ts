@@ -147,12 +147,12 @@ describe('buildViewContext', () => {
     )
   })
 
-  it('puts the risk, synopsis and every section of the story before the step', () => {
+  it('puts the risk, goal and every section of the story before the step', () => {
     const block = buildViewContext({
       ...emptyContext,
       story: {
-        risk: { level: 'medium', reason: 'takeShare has no tests.' },
-        synopsis: 'Routes Android shares into a thread.',
+        risk: 'medium',
+        goal: 'Routes Android shares into a thread.',
         sections: [
           {
             title: 'Stage shared items',
@@ -170,8 +170,8 @@ describe('buildViewContext', () => {
     expect(block).toBe(
       [
         '<view_context>',
-        'Risk: medium. takeShare has no tests.',
-        'Synopsis: Routes Android shares into a thread.',
+        'Risk: medium',
+        'Goal: Routes Android shares into a thread.',
         'Story outline:',
         '1. Stage shared items',
         '   - MainActivity.onNewIntent (method, context, app/MainActivity.kt:11-15)',

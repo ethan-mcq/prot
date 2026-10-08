@@ -28,9 +28,9 @@ You only see code: the indexed symbols, their code with diff markers (+ added, -
 
 Return JSON with five parts.
 
-overview.risk: level is "low", "medium" or "high". Decide it from the code: the blast radius (how many callers and sections the change touches), data, schema or migration changes, auth or security paths, concurrency and shared state, deleted or changed public functions, and whether each section has tests for its changed symbols. reason is one sentence naming the concrete thing that drives the risk, such as what could break or which callers or data are affected.
+overview.risk: "low", "medium" or "high". Decide it from the code: the blast radius (how many callers and sections the change touches), data, schema or migration changes, auth or security paths, concurrency and shared state, deleted or changed public functions, and whether each section has tests for its changed symbols.
 
-overview.synopsis: exactly one plain sentence saying what the code is or does, inferred from the code. The interface shows it directly under the risk.
+overview.goal: exactly one plain sentence describing the goal of the whole pull request: what it sets out to achieve, inferred from the code. The interface shows it beside the risk level.
 
 caption: one plain sentence naming what the story map shows, such as "How a shared item reaches a thread".
 
@@ -52,8 +52,8 @@ const section = strictObject({ title: stringType, summary: stringType })
 
 export const GUIDE_SCHEMA: Record<string, unknown> = strictObject({
   overview: strictObject({
-    risk: strictObject({ level: { type: 'string', enum: [...RISK_LEVELS] }, reason: stringType }),
-    synopsis: stringType
+    risk: { type: 'string', enum: [...RISK_LEVELS] },
+    goal: stringType
   }),
   caption: stringType,
   sections: {
@@ -187,15 +187,9 @@ export function firstSentence(text: string): string {
 }
 
 function parseOverview(raw: Record<string, unknown>, fallback: GuideOverview): GuideOverview {
-  const synopsis = text(raw.synopsis)
-  if (synopsis === null) throw new Error('AI guide is missing overview.synopsis')
-  const risk = isRecord(raw.risk) ? raw.risk : {}
-  const level = RISK_LEVELS.find((candidate) => candidate === risk.level)
-  const reason = text(risk.reason)
-  return {
-    risk: level !== undefined && reason !== null ? { level, reason } : fallback.risk,
-    synopsis: firstSentence(synopsis)
-  }
+  const goal = text(raw.goal)
+  if (goal === null) throw new Error('AI guide is missing overview.goal')
+  return { risk: RISK_LEVELS.find((candidate) => candidate === raw.risk) ?? fallback.risk, goal: firstSentence(goal) }
 }
 
 const MIN_QUESTIONS = 3

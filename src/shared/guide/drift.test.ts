@@ -7,7 +7,7 @@ const QUEUE = 'packages/mobile/src/share/share-queue.ts'
 
 const aiGuide = parseAiGuide(
   {
-    overview: { risk: { level: 'low', reason: 'Small.' }, synopsis: 'Shares text from other apps into a thread.' },
+    overview: { risk: 'low', goal: 'Shares text from other apps into a thread.' },
     caption: '',
     sections: [],
     files: [{ title: 'Native share module', summary: '', files: [KOTLIN_MODULE, SWIFT_MODULE] }]

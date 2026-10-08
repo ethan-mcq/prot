@@ -53,7 +53,9 @@ describe('Claude sessions', () => {
         running: false,
         lastTurnAt: '2026-10-07T10:02:00.000Z',
         lastMessage: 'Opened a PR with the fix.',
-        costUsd: 1.25
+        costUsd: 1.25,
+        contextTokens: null,
+        contextWindow: null
       }
     ])
   })
@@ -102,7 +104,9 @@ describe('Codex sessions', () => {
         running: false,
         lastTurnAt: '2026-10-08T04:46:17.394Z',
         lastMessage: 'hello',
-        costUsd: null
+        costUsd: null,
+        contextTokens: 15439,
+        contextWindow: 258400
       }
     ])
     expect(await listCodexSessions(dir, new Set([CODEX_ID]), NOW)).toEqual([])

@@ -318,6 +318,10 @@ export type TurnSpec = {
   systemPrompt: string | null
   // Extra directories Claude reads skills and instructions from.
   addDirs: string[]
+  // Claude: the prompt goes on stdin as a stream-json user message (for image blocks) instead of after `--`.
+  stdinPrompt: boolean
+  // Codex: image files attached to the prompt.
+  images: string[]
 }
 
 export function claudeArgs(spec: TurnSpec): string[] {
@@ -328,6 +332,10 @@ export function claudeArgs(spec: TurnSpec): string[] {
   if (spec.mode === 'fork') args.push('--fork-session')
   if (spec.systemPrompt) args.push('--append-system-prompt', spec.systemPrompt)
   for (const dir of spec.addDirs) args.push('--add-dir', dir)
+  if (spec.stdinPrompt) {
+    args.push('--input-format', 'stream-json')
+    return args
+  }
   // `--` keeps a prompt that starts with `-` from being read as an option.
   args.push('--', spec.prompt)
   return args
@@ -357,12 +365,27 @@ export function codexArgs(spec: TurnSpec): string[] {
   ]
   // A JSON string is a valid TOML basic string.
   if (spec.systemPrompt) args.push('-c', `developer_instructions=${JSON.stringify(spec.systemPrompt)}`)
-  if (spec.mode !== 'first') {
+  // exec's own --image takes several values, so each goes as --image=<path> and never swallows the subcommand.
+  const images: string[] = []
+  for (const image of spec.images) images.push(`--image=${image}`)
+  if (spec.mode === 'first') args.push(...images)
+  else {
     if (!spec.sessionId) throw new Error('A Codex follow-up needs a thread id')
-    args.push(spec.mode === 'fork' ? 'fork' : 'resume', spec.sessionId)
+    args.push(spec.mode === 'fork' ? 'fork' : 'resume', ...images, spec.sessionId)
   }
   args.push('--', spec.prompt)
   return args
+}
+
+export type StdinImage = { mime: string; data: Buffer }
+
+// One stream-json user message: the text, then each image as a base64 block.
+export function claudeStdinMessage(text: string, images: StdinImage[]): string {
+  const content: unknown[] = [{ type: 'text', text }]
+  for (const image of images) {
+    content.push({ type: 'image', source: { type: 'base64', media_type: image.mime, data: image.data.toString('base64') } })
+  }
+  return `${JSON.stringify({ type: 'user', message: { role: 'user', content } })}\n`
 }
 
 export function turnArgs(provider: AgentProvider, spec: TurnSpec): string[] {

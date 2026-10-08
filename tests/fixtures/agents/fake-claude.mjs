@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Stands in for the claude CLI in tests: logs its argv, then streams a short stream-json turn.
-// A prompt containing WAIT blocks until SIGINT (logged); FAIL exits 1 with stderr and no result.
+// A prompt containing WAIT blocks until SIGINT (logged); FAIL exits 1 with stderr and no result; IMAGE returns an image tool result.
+// With --input-format stream-json the prompt is the user message on stdin, which is logged too.
 import { randomUUID } from 'node:crypto'
 import { appendFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
@@ -22,17 +23,25 @@ if (args.includes('/usage')) {
   process.exit(0)
 }
 
-if (process.env.PROT_FAKE_ARGV_LOG) {
-  appendFileSync(process.env.PROT_FAKE_ARGV_LOG, `${JSON.stringify({ bin: 'claude', argv: args, cwd: process.cwd() })}\n`)
-}
-
 function option(name) {
   const index = args.indexOf(name)
   return index === -1 ? null : args[index + 1]
 }
 
+let stdin = null
+if (option('--input-format') === 'stream-json') {
+  let text = ''
+  for await (const chunk of process.stdin) text += chunk
+  stdin = JSON.parse(text.split('\n')[0])
+}
+
+if (process.env.PROT_FAKE_ARGV_LOG) {
+  appendFileSync(process.env.PROT_FAKE_ARGV_LOG, `${JSON.stringify({ bin: 'claude', argv: args, cwd: process.cwd(), ...(stdin ? { stdin } : {}) })}\n`)
+}
+
 const dash = args.indexOf('--')
-const prompt = dash === -1 ? args[args.length - 1] : args.slice(dash + 1).join(' ')
+let prompt = dash === -1 ? args[args.length - 1] : args.slice(dash + 1).join(' ')
+if (stdin) prompt = stdin.message.content.find((block) => block.type === 'text').text
 const resumed = option('--resume')
 const sessionId = args.includes('--fork-session') ? randomUUID() : (resumed ?? option('--session-id') ?? randomUUID())
 const model = option('--model') ?? 'claude-opus-5-5'
@@ -57,13 +66,18 @@ process.on('SIGINT', () => {
 
 record({ type: 'user', uuid: randomUUID(), origin: { kind: 'human' }, message: { role: 'user', content: prompt } })
 emit({ type: 'system', subtype: 'init', cwd: process.cwd(), session_id: sessionId, model, permissionMode: option('--permission-mode'), uuid: randomUUID() })
+emit({ type: 'system', subtype: 'commands_changed', commands: [{ name: 'review', description: 'Review the current diff (bundled)' }], session_id: sessionId, uuid: randomUUID() })
 await sleep(40)
 
 const messageId = `msg_${randomUUID().slice(0, 8)}`
 const toolId = `toolu_${randomUUID().slice(0, 8)}`
+// 250k tokens in context: a quarter of a 1M window.
+const usage = { input_tokens: 5, cache_read_input_tokens: 200000, cache_creation_input_tokens: 49995, output_tokens: 0 }
+const window = model.includes('[1m]') ? 1000000 : 200000
+const png = 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAIElEQVR4nGPQ0DC4WR5OPMlAkmoNDQOGURtGbRgyNgAANMoTkMGIb4oAAAAASUVORK5CYII='
 const assistant = (id, content) => ({
   type: 'assistant',
-  message: { model, id, type: 'message', role: 'assistant', content },
+  message: { model, id, type: 'message', role: 'assistant', content, usage },
   parent_tool_use_id: null,
   session_id: sessionId,
   uuid: randomUUID()
@@ -99,7 +113,16 @@ emit({
 })
 emit({
   type: 'user',
-  message: { role: 'user', content: [{ tool_use_id: toolId, type: 'tool_result', content: 'hi' }] },
+  message: {
+    role: 'user',
+    content: [
+      {
+        tool_use_id: toolId,
+        type: 'tool_result',
+        content: prompt.includes('IMAGE') ? [{ type: 'text', text: 'hi' }, { type: 'image', source: { type: 'base64', media_type: 'image/png', data: png } }] : 'hi'
+      }
+    ]
+  },
   parent_tool_use_id: null,
   session_id: sessionId,
   uuid: randomUUID()
@@ -120,5 +143,6 @@ emit({
   session_id: sessionId,
   total_cost_usd: 0.0123,
   usage: { input_tokens: 10, cache_creation_input_tokens: 100, cache_read_input_tokens: 1000, output_tokens: 20 },
+  modelUsage: { [model]: { inputTokens: 10, outputTokens: 20, contextWindow: window } },
   uuid: randomUUID()
 })

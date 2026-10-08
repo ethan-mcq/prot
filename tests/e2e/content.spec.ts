@@ -40,11 +40,11 @@ test('the overview reads risk, one sentence, then the attachments imported from 
   const attachments = page.getByRole('region', { name: 'Attachments' })
   await expect(attachments.getByRole('heading')).toHaveText('Attachments 2')
   await expect(attachments.getByRole('status')).toHaveCount(0)
-  const synopsis = 'It adds 13 symbols across 3 sections, entered through MainActivity.onNewIntent.'
+  const goal = 'It adds 13 symbols across 3 sections, entered through MainActivity.onNewIntent.'
   const text = await panel.innerText()
-  const order = ['Medium risk', synopsis, 'Attachments', 'Description'].map((part) => text.indexOf(part))
+  const order = ['Medium risk', goal, 'Attachments', 'Description'].map((part) => text.indexOf(part))
   expect({ missing: order.includes(-1), order }).toEqual({ missing: false, order: [...order].sort((a, b) => a - b) })
-  await expect(panel.getByText(synopsis, { exact: true })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Risk' }).locator('p')).toHaveText(`${goal}estimated`)
   await expect(panel).not.toContainText('Synopsis')
 
   const sheet = attachments.getByRole('img', { name: 'Share sheet on a Pixel 8' })

@@ -1,5 +1,12 @@
 import { isAbsolute } from 'node:path'
-import { AGENT_PROVIDERS, type AgentOpenTarget, type AgentStartInput } from '@shared/agents'
+import {
+  AGENT_PROVIDERS,
+  ATTACHMENT_MAX_BYTES,
+  ATTACHMENTS_PER_TURN,
+  type AgentAttachment,
+  type AgentOpenTarget,
+  type AgentStartInput
+} from '@shared/agents'
 import { PROMPT_HASH, PROMPT_KINDS, PROMPT_NAME_MAX, PROMPT_TEXT_MAX, type PromptKind } from '@shared/prompts'
 import { RISK_LEVELS } from '@shared/types'
 import { PERMISSIONS } from './agents/cli'
@@ -195,7 +202,6 @@ function parseSection(raw: unknown): SectionContext {
 
 function parseStory(raw: unknown): StoryContext {
   const value = obj(raw, 'story')
-  const risk = obj(value.risk, 'story risk')
   const sections = list(value.sections, 'story sections').map((section) => {
     const fields = obj(section, 'story section')
     return {
@@ -205,8 +211,8 @@ function parseStory(raw: unknown): StoryContext {
     }
   })
   return {
-    risk: { level: oneOf(risk.level, RISK_LEVELS, 'risk level'), reason: str(risk.reason, 'risk reason') },
-    synopsis: str(value.synopsis, 'story synopsis'),
+    risk: oneOf(value.risk, RISK_LEVELS, 'risk level'),
+    goal: str(value.goal, 'story goal'),
     sections
   }
 }
@@ -356,11 +362,45 @@ export function parseAgentPrompt(raw: unknown): string {
   return prompt
 }
 
+export function parseAgentFolder(raw: unknown): string {
+  const folder = str(raw, 'folder')
+  if (!isAbsolute(folder) || folder.includes('\0')) throw new Error('folder must be an absolute path')
+  return folder
+}
+
+// Shape only; main checks each path is a file it saved under its attachments dir.
+export function parseAgentAttachments(raw: unknown): AgentAttachment[] {
+  if (raw === undefined) return []
+  if (!Array.isArray(raw)) throw new Error('attachments must be an array')
+  if (raw.length > ATTACHMENTS_PER_TURN) throw new Error(`At most ${ATTACHMENTS_PER_TURN} attachments per message`)
+  const out: AgentAttachment[] = []
+  for (const item of raw) {
+    const value = obj(item, 'Attachment')
+    const path = str(value.path, 'attachment path')
+    if (!isAbsolute(path) || path.includes('\0')) throw new Error('Invalid attachment path')
+    const size = value.size
+    if (typeof size !== 'number' || !Number.isFinite(size) || size < 0) throw new Error('Invalid attachment size')
+    out.push({ path, name: str(value.name, 'attachment name'), mime: str(value.mime, 'attachment mime'), size })
+  }
+  return out
+}
+
+export function parseAttachmentName(raw: unknown): string {
+  const name = nonEmptyStr(raw, 'File name')
+  if (name.length > 255 || name.includes('\0')) throw new Error('Invalid file name')
+  return name
+}
+
+export function parseAttachmentData(raw: unknown): Uint8Array {
+  if (!(raw instanceof Uint8Array)) throw new Error('File data must be bytes')
+  if (raw.byteLength > ATTACHMENT_MAX_BYTES) throw new Error(`A file is at most ${ATTACHMENT_MAX_BYTES / (1024 * 1024)} MB`)
+  return raw
+}
+
 export function parseAgentStartInput(raw: unknown): AgentStartInput {
   const value = obj(raw, 'Agent')
   const provider = oneOf(value.provider, AGENT_PROVIDERS, 'Provider')
-  const repoPath = str(value.repoPath, 'repoPath')
-  if (!isAbsolute(repoPath)) throw new Error('repoPath must be an absolute path')
+  const folder = parseAgentFolder(value.folder)
   const model = str(value.model, 'model')
   if (!AGENT_MODEL.test(model)) throw new Error('Invalid model')
   // The effort ends up inside a TOML value for Codex, so it is a bare word.
@@ -368,7 +408,8 @@ export function parseAgentStartInput(raw: unknown): AgentStartInput {
   if (!AGENT_EFFORT.test(effort)) throw new Error('Invalid effort')
   const permission = oneOf(value.permission, PERMISSIONS[provider].map((option) => option.id), 'Permission')
   if (typeof value.worktree !== 'boolean') throw new Error('worktree must be a boolean')
-  return { provider, repoPath, prompt: parseAgentPrompt(value.prompt), model, effort, permission, worktree: value.worktree }
+  const attachments = parseAgentAttachments(value.attachments)
+  return { provider, folder, prompt: parseAgentPrompt(value.prompt), model, effort, permission, worktree: value.worktree, attachments }
 }
 
 export function parseAgentOpenTarget(raw: unknown): AgentOpenTarget {

@@ -78,6 +78,7 @@ record([
     type: 'event_msg',
     payload: {
       type: 'token_count',
+      info: { last_token_usage: { total_tokens: 64000 }, model_context_window: 256000 },
       rate_limits: {
         primary: { used_percent: 12.0, window_minutes: 300, resets_at: Math.floor(Date.now() / 1000) + 3600 },
         secondary: { used_percent: 40.0, window_minutes: 10080, resets_at: Math.floor(Date.now() / 1000) + 86400 }

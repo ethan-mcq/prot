@@ -11,7 +11,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { AgentDetail, AgentEvent, AgentFileChange, AgentPr, AgentSummary, ProviderInfo } from '@shared/agents'
-import { PROVIDER_NAMES } from '@shared/agents'
+import { agentFileUrl, isImageMime, PROVIDER_NAMES } from '@shared/agents'
 import { parsePatch } from '@shared/diff'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -21,6 +21,16 @@ import { FileIcon } from '@/components/file-icon'
 import { Markdown } from '@/components/markdown'
 import { PaneButton } from '@/components/pane'
 import { PrBadge, ProviderMark, STATUS_TEXT, StatusDot } from '@/components/agent-bits'
+import {
+  AttachButton,
+  AttachmentStrip,
+  ContextWheel,
+  FileChips,
+  ImageThumbs,
+  useAttachments,
+  useCommands,
+  useSlashMenu
+} from '@/components/agent-composer'
 import {
   effortLabel,
   formatCost,
@@ -326,7 +336,10 @@ function Transcript({
       )}
       {items.map((item) =>
         item.kind === 'run' ? (
-          <RunRow key={item.id} tools={item.tools} active={activeRun === item.id} onOpen={() => onOpenRun(item.id)} />
+          <div key={item.id} className="space-y-1.5">
+            <RunRow tools={item.tools} active={activeRun === item.id} onOpen={() => onOpenRun(item.id)} />
+            <ImageThumbs paths={runImages(item.tools)} className="pl-1.5" />
+          </div>
         ) : (
           <TranscriptEvent key={item.event.id} event={item.event} />
         )
@@ -346,16 +359,24 @@ function TranscriptEvent({ event }: { event: AgentEvent }) {
   switch (event.kind) {
     case 'system':
       return <SystemCard event={event} />
-    case 'user':
+    case 'user': {
+      const attachments = event.attachments ?? []
+      const images: string[] = []
+      for (const item of attachments) {
+        if (isImageMime(item.mime)) images.push(item.path)
+      }
       return (
-        <div className="flex justify-end">
+        <div className="flex flex-col items-end gap-1.5">
+          <ImageThumbs paths={images} className="max-w-[85%] justify-end" />
+          <FileChips attachments={attachments} />
           <p className="max-w-[85%] rounded-[10px] bg-selection px-3 py-2 font-mono text-[12.5px] leading-[1.6] whitespace-pre-wrap [overflow-wrap:anywhere]">
             {event.text}
           </p>
         </div>
       )
+    }
     case 'assistant':
-      return <Markdown className="text-[13px] leading-[1.7] text-foreground/90">{event.text}</Markdown>
+      return <AssistantText event={event} />
     case 'thinking':
       return <Thinking text={event.text} />
     case 'tool':
@@ -369,6 +390,48 @@ function TranscriptEvent({ event }: { event: AgentEvent }) {
     case 'turn':
       return <TurnFooter event={event} />
   }
+}
+
+function runImages(tools: ToolEvent[]): string[] {
+  const out: string[] = []
+  for (const tool of tools) {
+    for (const path of tool.images ?? []) {
+      if (!out.includes(path)) out.push(path)
+    }
+  }
+  return out
+}
+
+const MARKDOWN_IMAGE = /!\[[^\]]*\]\(\s*<?([^)>\s]+)/g
+
+function imagePath(src: string): string {
+  try {
+    return decodeURI(src.replace(/^file:\/\//, ''))
+  } catch {
+    return src
+  }
+}
+
+// Markdown images of files the event found render inline; the rest show as thumbnails under the text.
+function AssistantText({ event }: { event: Extract<AgentEvent, { kind: 'assistant' }> }) {
+  const images = event.images ?? []
+  const inline: string[] = []
+  for (const match of event.text.matchAll(MARKDOWN_IMAGE)) inline.push(imagePath(match[1] ?? ''))
+  const rest = images.filter((path) => !inline.includes(path))
+  return (
+    <div className="space-y-2">
+      <Markdown
+        className="text-[13px] leading-[1.7] text-foreground/90"
+        image={(src) => {
+          const path = imagePath(src)
+          return images.includes(path) ? agentFileUrl(path) : null
+        }}
+      >
+        {event.text}
+      </Markdown>
+      <ImageThumbs paths={rest} />
+    </div>
+  )
 }
 
 function RunRow({ tools, active, onOpen }: { tools: ToolEvent[]; active: boolean; onOpen: () => void }) {
@@ -504,17 +567,22 @@ function TurnFooter({ event }: { event: Extract<AgentEvent, { kind: 'turn' }> })
 function FollowUp({ agent, store, onSelect }: { agent: AgentSummary; store: AgentsStore; onSelect: (id: string) => void }) {
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
+  const textarea = useRef<HTMLTextAreaElement>(null)
+  const attachments = useAttachments()
+  const commands = useCommands(agent.repoPath ?? agent.cwd)
+  const slash = useSlashMenu({ text, setText, textarea, commands, provider: agent.provider, placement: 'above' })
   const outside = agent.source !== 'prot'
   const running = agent.status === 'running'
-  const ready = text.trim().length > 0 && !running && !sending
+  const ready = text.trim().length > 0 && !running && !sending && !attachments.busy
 
   async function send() {
     if (!ready) return
     setSending(true)
     try {
-      const next = await window.prot.agents.send(agent.id, text.trim())
+      const next = await window.prot.agents.send(agent.id, text.trim(), attachments.items)
       store.upsert(next)
       setText('')
+      attachments.clear()
       if (next.id !== agent.id) onSelect(next.id)
     } catch (error) {
       toast.error(outside ? 'Could not continue the session' : 'Could not send the message', { description: errorMessage(error) })
@@ -525,35 +593,55 @@ function FollowUp({ agent, store, onSelect }: { agent: AgentSummary; store: Agen
 
   return (
     <div className="shrink-0 border-t border-pane-border p-2.5">
-      <div className="flex items-end gap-2 rounded-[9px] border border-pane-border bg-muted/40 p-1 pl-2.5 font-mono focus-within:border-frame">
-        <span aria-hidden className="py-1.5 text-[12.5px] leading-5 text-muted-foreground">
-          ›
-        </span>
-        <Textarea
-          aria-label="Message agent"
-          placeholder={running ? 'The agent is working…' : outside ? 'Continue in prot (forks the session)' : 'Send a follow-up'}
-          value={text}
-          disabled={running || sending}
-          onChange={(event) => setText(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-              event.preventDefault()
-              void send()
-            }
-          }}
-          rows={2}
-          className="max-h-48 min-h-0 resize-none border-0 bg-transparent p-0 py-1.5 font-mono text-[12.5px] leading-5 shadow-none focus-visible:ring-0 disabled:opacity-60 dark:bg-transparent"
-        />
-        {outside ? (
-          <Button size="sm" aria-label="Continue in prot" disabled={!ready} onClick={() => void send()} className="h-7 rounded-[7px] px-2.5 font-mono text-[11.5px]">
-            {sending ? <LoaderCircle className="animate-spin" /> : <ArrowUp />}
-            Continue in prot
-          </Button>
-        ) : (
-          <Button size="icon-sm" aria-label="Send" title="Send (⌘↵)" disabled={!ready} onClick={() => void send()} className="size-7 rounded-[7px]">
-            {sending ? <LoaderCircle className="size-4 animate-spin" /> : <ArrowUp className="size-4" />}
-          </Button>
+      <div
+        {...attachments.dropProps}
+        className={cn(
+          'relative rounded-[9px] border border-pane-border bg-muted/40 p-1 pl-2.5 font-mono focus-within:border-frame',
+          attachments.dragging && 'border-frame bg-selection/40'
         )}
+      >
+        {slash.menu}
+        <AttachmentStrip attachments={attachments} />
+        <div className="flex items-end gap-2">
+          <span aria-hidden className="py-1.5 text-[12.5px] leading-5 text-muted-foreground">
+            ›
+          </span>
+          <Textarea
+            ref={textarea}
+            aria-label="Message agent"
+            placeholder={running ? 'The agent is working…' : outside ? 'Continue in prot (forks the session)' : 'Send a follow-up, / for skills'}
+            value={text}
+            disabled={running || sending}
+            {...slash.inputProps}
+            onChange={(event) => {
+              setText(event.target.value)
+              slash.track(event.target)
+            }}
+            onSelect={(event) => slash.track(event.currentTarget)}
+            onPaste={attachments.onPaste}
+            onKeyDown={(event) => {
+              if (slash.onKeyDown(event)) return
+              if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+                event.preventDefault()
+                void send()
+              }
+            }}
+            rows={2}
+            className="max-h-48 min-h-0 resize-none border-0 bg-transparent p-0 py-1.5 font-mono text-[12.5px] leading-5 shadow-none focus-visible:ring-0 disabled:opacity-60 dark:bg-transparent"
+          />
+          <AttachButton attachments={attachments} disabled={running || sending} />
+          <ContextWheel context={agent.context} />
+          {outside ? (
+            <Button size="sm" aria-label="Continue in prot" disabled={!ready} onClick={() => void send()} className="h-7 rounded-[7px] px-2.5 font-mono text-[11.5px]">
+              {sending ? <LoaderCircle className="animate-spin" /> : <ArrowUp />}
+              Continue in prot
+            </Button>
+          ) : (
+            <Button size="icon-sm" aria-label="Send" title="Send (⌘↵)" disabled={!ready} onClick={() => void send()} className="size-7 rounded-[7px]">
+              {sending ? <LoaderCircle className="size-4 animate-spin" /> : <ArrowUp className="size-4" />}
+            </Button>
+          )}
+        </div>
       </div>
       <p className="px-1 pt-1.5 font-mono text-[10.5px] text-muted-foreground">
         {outside ? 'Continue in prot (forks the session) · ⌘↵' : running ? 'Follow-ups open when the turn ends' : '⌘↵ to send'}

@@ -1,16 +1,20 @@
 import type { AgentEvent, UsageWindow } from '@shared/agents'
 import { oneLine, toolSummary, truncateOutput, usageWindow, type ToolEvent } from './events'
 
+// Writes a base64 image from a tool result to disk and returns its path.
+export type SaveImage = (mime: string, base64: string) => string | null
+
 export type ClaudeParseState = {
   // Transcripts on disk carry the user's prompts; prot records its own prompts for a live stream.
   userPrompts: boolean
   seen: Set<string>
   blockCount: Map<string, number>
   tools: Map<string, ToolEvent>
+  saveImage: SaveImage | null
 }
 
-export function newClaudeState(userPrompts = false): ClaudeParseState {
-  return { userPrompts, seen: new Set(), blockCount: new Map(), tools: new Map() }
+export function newClaudeState(userPrompts = false, saveImage: SaveImage | null = null): ClaudeParseState {
+  return { userPrompts, seen: new Set(), blockCount: new Map(), tools: new Map(), saveImage }
 }
 
 export type ClaudeTurnResult = { isError: boolean; costUsd: number | null }
@@ -21,6 +25,12 @@ export type ClaudeLine = {
   model: string | null
   usage: UsageWindow[] | null
   result: ClaudeTurnResult | null
+  // Tokens in the context of the newest assistant message.
+  contextTokens: number | null
+  // Context window per model from result.modelUsage.
+  contextWindows: Record<string, number> | null
+  // A system/commands_changed list.
+  commands: unknown[] | null
 }
 
 type Block = {
@@ -28,6 +38,7 @@ type Block = {
   id?: unknown
   text?: unknown
   thinking?: unknown
+  source?: { type?: unknown; media_type?: unknown; data?: unknown }
   name?: unknown
   input?: unknown
   tool_use_id?: unknown
@@ -46,15 +57,19 @@ type Line = {
   isSidechain?: unknown
   isCompactSummary?: unknown
   origin?: unknown
-  message?: { id?: unknown; model?: unknown; content?: unknown }
+  message?: { id?: unknown; model?: unknown; content?: unknown; usage?: Usage }
+  commands?: unknown
+  modelUsage?: unknown
   rate_limit_info?: { unifiedWindows?: unknown; rateLimitType?: unknown; utilization?: unknown; resetsAt?: unknown }
   duration_ms?: unknown
   total_cost_usd?: unknown
   is_error?: unknown
   result?: unknown
   errors?: unknown
-  usage?: { input_tokens?: unknown; output_tokens?: unknown; cache_creation_input_tokens?: unknown; cache_read_input_tokens?: unknown }
+  usage?: Usage
 }
+
+type Usage = { input_tokens?: unknown; output_tokens?: unknown; cache_creation_input_tokens?: unknown; cache_read_input_tokens?: unknown }
 
 const WINDOW_LABELS: Record<string, string> = {
   five_hour: '5 hour',
@@ -72,7 +87,43 @@ function str(value: unknown): string | null {
 }
 
 function emptyLine(): ClaudeLine {
-  return { events: [], sessionId: null, model: null, usage: null, result: null }
+  return { events: [], sessionId: null, model: null, usage: null, result: null, contextTokens: null, contextWindows: null, commands: null }
+}
+
+// Everything the request put in context plus what it wrote back.
+export function usageContextTokens(usage: Usage | undefined): number | null {
+  if (!usage) return null
+  const input = num(usage.input_tokens)
+  if (input === null) return null
+  return input + (num(usage.cache_read_input_tokens) ?? 0) + (num(usage.cache_creation_input_tokens) ?? 0) + (num(usage.output_tokens) ?? 0)
+}
+
+export function contextWindows(modelUsage: unknown): Record<string, number> | null {
+  if (typeof modelUsage !== 'object' || modelUsage === null) return null
+  const out: Record<string, number> = {}
+  let any = false
+  for (const [model, value] of Object.entries(modelUsage as Record<string, { contextWindow?: unknown }>)) {
+    const window = num(value?.contextWindow)
+    if (window !== null && window > 0) {
+      out[model] = window
+      any = true
+    }
+  }
+  return any ? out : null
+}
+
+function resultImages(content: unknown, save: SaveImage | null): string[] {
+  if (!save || !Array.isArray(content)) return []
+  const paths: string[] = []
+  for (const block of content as Block[]) {
+    if (block.type !== 'image' || block.source?.type !== 'base64') continue
+    const mime = str(block.source.media_type)
+    const data = str(block.source.data)
+    if (!mime || !data) continue
+    const path = save(mime, data)
+    if (path) paths.push(path)
+  }
+  return paths
 }
 
 export function claudeUsage(info: Line['rate_limit_info']): UsageWindow[] | null {
@@ -206,6 +257,8 @@ function userEvents(line: Line, state: ClaudeParseState, at: string): AgentEvent
         output: truncateOutput(resultText(block.content)),
         status: block.is_error === true ? 'error' : 'ok'
       }
+      const images = resultImages(block.content, state.saveImage)
+      if (images.length > 0) done.images = images
       state.tools.set(id, done)
       events.push(done)
     }
@@ -254,9 +307,12 @@ export function parseClaudeLine(raw: unknown, state: ClaudeParseState, now: stri
   if (line.type === 'system' && line.subtype === 'init') {
     out.sessionId = str(line.session_id)
     out.model = str(line.model)
+  } else if (line.type === 'system' && line.subtype === 'commands_changed') {
+    out.commands = Array.isArray(line.commands) ? line.commands : null
   } else if (line.type === 'assistant') {
     out.events = assistantEvents(line, state, at)
     out.model = str(line.message?.model)
+    out.contextTokens = usageContextTokens(line.message?.usage)
   } else if (line.type === 'user') {
     out.events = userEvents(line, state, at)
   } else if (line.type === 'rate_limit_event') {
@@ -266,6 +322,7 @@ export function parseClaudeLine(raw: unknown, state: ClaudeParseState, now: stri
     out.events = events
     out.result = result
     out.sessionId = str(line.session_id)
+    out.contextWindows = contextWindows(line.modelUsage)
   }
   return out
 }

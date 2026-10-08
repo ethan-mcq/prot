@@ -107,7 +107,7 @@ describe('removeVersion', () => {
     ['a built-in version goes and is retired', 'e6945cfbcd0b', ['d1a090fa9228', 'e40065d9dff0'], ['e6945cfbcd0b']]
   ])('%s', async (_case, hash, hashes, retired) => {
     const saved = (await saveVersion(seeded, 'Review risk first.', LATER)).library
-    const lib = await reconcile(saved, 'You write guided code reviews, risk first.', LATER)
+    const lib = setLive(await reconcile(saved, 'You write guided code reviews, risk first.', LATER), 'd1a090fa9228')
     const removed = removeVersion(lib, hash)
     expect({ hashes: removed.versions.map((v) => v.hash), retired: removed.retiredBuiltIns, liveHash: removed.liveHash }).toEqual({
       hashes,
@@ -144,6 +144,15 @@ describe('reconcile', () => {
       added: { hash: 'e6945cfbcd0b', name: null, text: shipped, createdAt: LATER, builtIn: true },
       hashes: ['d1a090fa9228', 'e40065d9dff0', 'e6945cfbcd0b'],
       converged: true
+    })
+  })
+
+  it('moves live to a changed shipped prompt while the old built-in is live', async () => {
+    const shipped = 'You write guided code reviews, risk first.'
+    const lib = await reconcile(seeded, shipped, LATER)
+    expect({ liveHash: lib.liveHash, hashes: lib.versions.map((v) => v.hash) }).toEqual({
+      liveHash: 'e6945cfbcd0b',
+      hashes: ['d1a090fa9228', 'e6945cfbcd0b']
     })
   })
 
@@ -185,7 +194,7 @@ describe('reconcileAll', () => {
     })
   })
 
-  it('a changed shipped chat prompt adds a chat version and leaves the guide library untouched', async () => {
+  it('a changed shipped chat prompt adds a live chat version and leaves the guide library untouched', async () => {
     const first = await reconcileAll({}, { guide: BUILT_IN, chat: CHAT, agent: 'You run agents.' }, SEEDED)
     const upgraded = await reconcileAll(first, { guide: BUILT_IN, chat: 'You answer review questions, briefly.', agent: 'You run agents.' }, LATER)
     expect({
@@ -194,7 +203,7 @@ describe('reconcileAll', () => {
       chatHashes: upgraded.chat.versions.map((v) => `${v.hash} ${v.name ?? '-'}`)
     }).toEqual({
       guideKept: true,
-      chatLive: '18b4da50330c',
+      chatLive: '16fa055c085a',
       chatHashes: ['18b4da50330c built-in default', '16fa055c085a -']
     })
   })

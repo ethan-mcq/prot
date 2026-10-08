@@ -18,6 +18,10 @@ import {
   parseAgentId,
   parseAgentOpenTarget,
   parseAgentPrompt,
+  parseAgentAttachments,
+  parseAgentFolder,
+  parseAttachmentData,
+  parseAttachmentName,
   parseAgentStartInput,
   parseAnthropicKey,
   parseChatRequest,
@@ -129,14 +133,21 @@ export function registerIpc(services: Services): void {
   ipcMain.handle(IPC.agentsRefresh, () => agents.refresh())
   ipcMain.handle(IPC.agentsStart, (_event, input: unknown) => agents.start(parseAgentStartInput(input)))
   ipcMain.handle(IPC.agentsGet, (_event, id: unknown) => agents.get(parseAgentId(id)))
-  ipcMain.handle(IPC.agentsSend, (_event, id: unknown, prompt: unknown) => agents.send(parseAgentId(id), parseAgentPrompt(prompt)))
+  ipcMain.handle(IPC.agentsSend, (_event, id: unknown, prompt: unknown, attachments: unknown) =>
+    agents.send(parseAgentId(id), parseAgentPrompt(prompt), parseAgentAttachments(attachments))
+  )
   ipcMain.handle(IPC.agentsStop, (_event, id: unknown) => agents.stop(parseAgentId(id)))
   ipcMain.handle(IPC.agentsMarkRead, (_event, id: unknown) => agents.markRead(parseAgentId(id)))
   ipcMain.handle(IPC.agentsArchive, (_event, id: unknown) => agents.archive(parseAgentId(id)))
   ipcMain.handle(IPC.agentsRemoveWorktree, (_event, id: unknown) => agents.removeWorktree(parseAgentId(id)))
   ipcMain.handle(IPC.agentsChanges, (_event, id: unknown) => agents.changes(parseAgentId(id)))
   ipcMain.handle(IPC.agentsDiff, (_event, id: unknown, path: unknown) => agents.diff(parseAgentId(id), parseAgentDiffPath(path)))
-  ipcMain.handle(IPC.agentsAddRepo, () => agents.addRepo())
+  ipcMain.handle(IPC.agentsAddFolder, () => agents.addFolder())
+  ipcMain.handle(IPC.agentsCommands, (_event, folder: unknown) => agents.commands(parseAgentFolder(folder)))
+  ipcMain.handle(IPC.agentsPickAttachments, () => agents.pickAttachments())
+  ipcMain.handle(IPC.agentsSaveAttachment, (_event, name: unknown, data: unknown) =>
+    agents.saveAttachment(parseAttachmentName(name), parseAttachmentData(data))
+  )
   ipcMain.handle(IPC.agentsInstructions, () => agents.instructions())
   ipcMain.handle(IPC.agentsChooseInstructions, () => agents.chooseInstructionsFolder())
   ipcMain.handle(IPC.agentsCreateAgentsMd, () => agents.createAgentsMd())

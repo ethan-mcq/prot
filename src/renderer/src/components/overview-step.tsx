@@ -27,10 +27,11 @@ const RISK_TONE: Record<RiskLevel, { label: string; className: string }> = {
   low: { label: 'Low', className: 'border-added/40 bg-added-bg text-added' }
 }
 
+// The risk level, then one sentence on what the whole PR sets out to do.
 function RiskLine() {
   const { session } = useReview()
-  const { risk } = session.guide.overview
-  const tone = RISK_TONE[risk.level]
+  const { risk, goal } = session.guide.overview
+  const tone = RISK_TONE[risk]
   const estimated = session.guide.source === 'heuristic'
   return (
     <section aria-label="Risk" className="flex items-start gap-2.5">
@@ -38,7 +39,7 @@ function RiskLine() {
         {tone.label} risk
       </span>
       <p className="min-w-0 font-copy text-[13px] leading-[1.75] text-foreground/90">
-        {risk.reason}
+        {goal}
         {estimated && <span className="ml-2 font-mono text-[11px] text-muted-foreground">estimated</span>}
       </p>
     </section>
@@ -47,7 +48,6 @@ function RiskLine() {
 
 export function OverviewStep() {
   const { detail, session, dispatch } = useReview()
-  const { overview } = session.guide
   const files = guideOrder(session.guide, detail.files)
   const { ref } = detail.summary
 
@@ -58,10 +58,7 @@ export function OverviewStep() {
         <div className="scroll-quiet min-h-0 flex-1 overflow-y-auto px-5 pt-2 pb-6 font-mono text-[12.5px] leading-[1.7]">
           <div className="max-w-[720px] space-y-6">
             <h2 className="text-[16px] font-semibold text-foreground">Overview</h2>
-            <div className="space-y-2">
-              <RiskLine />
-              <p className="font-copy text-[13px] leading-[1.75] text-foreground/85">{overview.synopsis}</p>
-            </div>
+            <RiskLine />
             <AttachmentsRow />
             <details className="group space-y-2">
               <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 font-semibold select-none [&::-webkit-details-marker]:hidden">

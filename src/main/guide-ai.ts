@@ -2,7 +2,7 @@ import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promise
 import { join } from 'node:path'
 import { withOutputStyle } from '@shared/output-style'
 import { livePrompt } from '@shared/prompts'
-import { pullKey, type Guide, type PullDetail, type PullRef } from '@shared/types'
+import { RISK_LEVELS, pullKey, type Guide, type GuideOverview, type PullDetail, type PullRef } from '@shared/types'
 import { GUIDE_SCHEMA, buildGuidePrompt, buildStoryGuide, parseAiGuide } from '@shared/guide'
 import { createClient, describeAiError, modelParams, refusalMessage } from './claude'
 import type { CodeIndexService } from './code-index/service'
@@ -20,20 +20,30 @@ function cacheFileName(ref: PullRef): string {
 
 type CachedGuide = Omit<Extract<Guide, { source: 'ai' }>, 'questions' | 'promptHash'> & { questions?: unknown; promptHash?: unknown }
 
+// A guide cached before the overview became one goal sentence has { risk: { level, reason }, synopsis }; its synopsis stands in for the goal.
+function cachedOverview(value: unknown): GuideOverview | null {
+  if (typeof value !== 'object' || value === null) return null
+  const raw = value as { risk?: unknown; goal?: unknown; synopsis?: unknown }
+  const goal = typeof raw.goal === 'string' ? raw.goal : raw.synopsis
+  const level = typeof raw.risk === 'object' && raw.risk !== null ? (raw.risk as { level?: unknown }).level : raw.risk
+  const risk = RISK_LEVELS.find((candidate) => candidate === level)
+  return typeof goal === 'string' && risk !== undefined ? { risk, goal } : null
+}
+
 // The shape a cached guide needs to be reusable. Fields added since (questions, promptHash) are backfilled, not regenerated.
-function isCachedGuide(value: unknown): value is CachedGuide {
-  if (typeof value !== 'object' || value === null) return false
+function cachedGuide(value: unknown): CachedGuide | null {
+  if (typeof value !== 'object' || value === null) return null
   const guide = value as Record<string, unknown>
-  return (
+  const overview = cachedOverview(guide.overview)
+  const reusable =
     guide.source === 'ai' &&
     typeof guide.headSha === 'string' &&
     Array.isArray(guide.chapters) &&
     typeof guide.symbols === 'object' &&
     guide.symbols !== null &&
-    typeof (guide.overview as { synopsis?: unknown } | undefined)?.synopsis === 'string' &&
     typeof guide.coverage === 'object' &&
     guide.coverage !== null
-  )
+  return reusable && overview !== null ? ({ ...guide, overview } as CachedGuide) : null
 }
 
 export class GuideService {
@@ -120,8 +130,7 @@ export class GuideService {
 
   private async readCache(file: string): Promise<CachedGuide | null> {
     try {
-      const parsed: unknown = JSON.parse(await readFile(file, 'utf8'))
-      return isCachedGuide(parsed) ? parsed : null
+      return cachedGuide(JSON.parse(await readFile(file, 'utf8')))
     } catch {
       return null
     }
