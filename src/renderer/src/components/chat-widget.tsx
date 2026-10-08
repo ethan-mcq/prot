@@ -27,7 +27,7 @@ type Threads = Record<string, Thread>
 const MODEL_NAMES: Record<AiModel, string> = {
   'claude-opus-5-5': 'Claude Opus 5.5',
   'claude-sonnet-5-5': 'Claude Sonnet 5.5',
-  'claude-haiku-4-5': 'Claude Haiku 4.5'
+  'claude-haiku-5-5': 'Claude Haiku 5.5'
 }
 
 const EFFORT_NAMES: Record<Effort, string> = {
@@ -41,7 +41,7 @@ const EFFORT_NAMES: Record<Effort, string> = {
 const HAS_EFFORT: Record<AiModel, boolean> = {
   'claude-opus-5-5': true,
   'claude-sonnet-5-5': true,
-  'claude-haiku-4-5': false
+  'claude-haiku-5-5': true
 }
 
 const SELECTION_LIMIT = 4000

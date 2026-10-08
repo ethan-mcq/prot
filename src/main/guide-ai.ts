@@ -1,5 +1,6 @@
 import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { withOutputStyle } from '@shared/output-style'
 import { livePrompt } from '@shared/prompts'
 import { pullKey, type Guide, type PullDetail, type PullRef } from '@shared/types'
 import { GUIDE_SCHEMA, buildGuidePrompt, buildStoryGuide, parseAiGuide } from '@shared/guide'
@@ -147,7 +148,7 @@ export class GuideService {
     const { index, heads } = await this.code.index(ref, detail)
     const story = buildStoryGuide(detail, index)
     const live = livePrompt(await this.prompts.get('guide'))
-    const prompt = buildGuidePrompt(detail, story, heads, live.text)
+    const prompt = buildGuidePrompt(detail, story, heads, withOutputStyle(live.text, this.settings.get().outputStyle))
     const model = this.settings.get().model
     let message
     try {
@@ -157,7 +158,7 @@ export class GuideService {
           max_tokens: GUIDE_MAX_TOKENS,
           system: prompt.system,
           messages: [{ role: 'user', content: prompt.user }],
-          ...modelParams(model, 'high', { type: 'json_schema', schema: GUIDE_SCHEMA })
+          ...modelParams(model, 'medium', { type: 'json_schema', schema: GUIDE_SCHEMA })
         })
         .finalMessage()
     } catch (error) {

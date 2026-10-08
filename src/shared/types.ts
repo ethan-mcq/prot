@@ -258,7 +258,7 @@ export type InboxState = {
   error: string | null
 }
 
-export const AI_MODELS = ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-4-5'] as const
+export const AI_MODELS = ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'] as const
 export type AiModel = (typeof AI_MODELS)[number]
 
 export const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
@@ -266,11 +266,15 @@ export type Effort = (typeof EFFORTS)[number]
 
 export type Theme = 'system' | 'light' | 'dark'
 
+export const OUTPUT_STYLES = ['concise', 'default'] as const
+export type OutputStyle = (typeof OUTPUT_STYLES)[number]
+
 export type Settings = {
   theme: Theme
   pollSeconds: number
   model: AiModel
   chatEffort: Effort
+  outputStyle: OutputStyle
   notify: boolean
   autoAiGuide: boolean
   autoRefreshStaleGuides: boolean
@@ -279,8 +283,9 @@ export type Settings = {
 export const DEFAULT_SETTINGS: Settings = {
   theme: 'system',
   pollSeconds: 60,
-  model: 'claude-sonnet-5-5',
+  model: 'claude-haiku-5-5',
   chatEffort: 'medium',
+  outputStyle: 'concise',
   notify: true,
   autoAiGuide: true,
   autoRefreshStaleGuides: false

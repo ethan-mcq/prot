@@ -1,4 +1,4 @@
-import { AI_MODELS, DEFAULT_SETTINGS, EFFORTS, type Settings, type Theme } from '@shared/types'
+import { AI_MODELS, DEFAULT_SETTINGS, EFFORTS, OUTPUT_STYLES, type Settings, type Theme } from '@shared/types'
 
 export const MIN_POLL_SECONDS = 30
 export const MAX_POLL_SECONDS = 3600
@@ -17,6 +17,7 @@ const FIELDS: FieldParsers = {
     typeof value === 'number' && Number.isFinite(value) ? clampPollSeconds(value) : undefined,
   model: (value) => AI_MODELS.find((model) => model === value),
   chatEffort: (value) => EFFORTS.find((effort) => effort === value),
+  outputStyle: (value) => OUTPUT_STYLES.find((style) => style === value),
   notify: (value) => (typeof value === 'boolean' ? value : undefined),
   autoAiGuide: (value) => (typeof value === 'boolean' ? value : undefined),
   autoRefreshStaleGuides: (value) => (typeof value === 'boolean' ? value : undefined)

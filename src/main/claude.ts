@@ -2,11 +2,11 @@ import Anthropic from '@anthropic-ai/sdk'
 import type { AiModel, Effort } from '@shared/types'
 import type { SecretsStore } from './secrets'
 
-// Haiku 4.5 predates adaptive thinking, effort and server-side refusal fallback.
-const SUPPORTS_ADAPTIVE: Record<AiModel, boolean> = {
-  'claude-opus-5-5': true,
-  'claude-sonnet-5-5': true,
-  'claude-haiku-4-5': false
+// Haiku 5.5 has adaptive thinking and effort but no server-side refusal fallback; sending one is a 400.
+const CAPABILITIES: Record<AiModel, { fallback: boolean }> = {
+  'claude-opus-5-5': { fallback: true },
+  'claude-sonnet-5-5': { fallback: true },
+  'claude-haiku-5-5': { fallback: false }
 }
 
 export type ModelParams = {
@@ -23,14 +23,13 @@ export function modelParams(
 ): ModelParams {
   const output: Anthropic.Beta.BetaOutputConfig = {}
   if (format) output.format = format
-  if (!SUPPORTS_ADAPTIVE[model]) return format ? { output_config: output } : {}
   output.effort = effort
-  return {
-    thinking: { type: 'adaptive' },
-    betas: ['server-side-fallback-2026-07-01'],
-    fallbacks: 'default',
-    output_config: output
+  const params: ModelParams = { thinking: { type: 'adaptive' }, output_config: output }
+  if (CAPABILITIES[model].fallback) {
+    params.betas = ['server-side-fallback-2026-07-01']
+    params.fallbacks = 'default'
   }
+  return params
 }
 
 export async function createClient(secrets: SecretsStore): Promise<Anthropic> {

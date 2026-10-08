@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { FileText, LogOut, Settings as SettingsIcon } from 'lucide-react'
-import type { Theme } from '@shared/types'
+import type { OutputStyle, Theme } from '@shared/types'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { PaneButton } from '@/components/pane'
@@ -11,6 +11,11 @@ import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { usePrefs } from '@/lib/prefs'
 import { cn } from '@/lib/utils'
+
+const OUTPUT_STYLE_OPTIONS: { value: OutputStyle; label: string }[] = [
+  { value: 'concise', label: 'Concise' },
+  { value: 'default', label: 'Default' }
+]
 
 const THEMES: { value: Theme; label: string }[] = [
   { value: 'system', label: 'System' },
@@ -57,6 +62,28 @@ export function SettingsMenu({ onSignOut }: { onSignOut: () => void }) {
                   )}
                 >
                   {theme.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-2">
+            <p className="font-mono text-[11.5px] text-muted-foreground">ai output style</p>
+            <div role="radiogroup" aria-label="Output style" className="grid grid-cols-2 rounded-[8px] bg-muted p-0.5">
+              {OUTPUT_STYLE_OPTIONS.map((style) => (
+                <button
+                  key={style.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={settings.outputStyle === style.value}
+                  onClick={() => void updateSettings({ outputStyle: style.value })}
+                  className={cn(
+                    'rounded-[6px] py-1 text-xs transition-colors',
+                    settings.outputStyle === style.value
+                      ? 'bg-card font-medium shadow-raised'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  {style.label}
                 </button>
               ))}
             </div>

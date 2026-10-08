@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { IPC } from '@shared/ipc'
+import { withOutputStyle } from '@shared/output-style'
 import { versionOrLive } from '@shared/prompts'
 import type { ChatEvent, ChatRequest } from '@shared/types'
 import { attachViewContext, buildChatSystem } from './chat-context'
@@ -51,7 +52,7 @@ export class ChatService {
           system: [
             {
               type: 'text',
-              text: buildChatSystem(instructions, detail),
+              text: buildChatSystem(withOutputStyle(instructions, settings.outputStyle), detail),
               cache_control: { type: 'ephemeral' }
             }
           ],

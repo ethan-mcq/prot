@@ -408,7 +408,7 @@ test('chat widget takes an API key, swaps in the AI guide, and answers with the 
   await shot('07-chat')
 
   const chats = () => anthropic.requests.filter((r) => !JSON.stringify(r.body).includes('json_schema'))
-  const first = chats().at(-1)?.body as { model: string; output_config: { effort: string } }
+  const first = chats().at(-1)?.body as { model: string; output_config: { effort: string }; fallbacks?: unknown; system: { text: string }[] }
   const sent = JSON.stringify(first)
   const guideRequest = JSON.stringify(anthropic.requests.find((r) => JSON.stringify(r.body).includes('json_schema'))?.body)
   expect(guideRequest).toContain('CapyShareModule.takeShare')
@@ -417,7 +417,12 @@ test('chat widget takes an API key, swaps in the AI guide, and answers with the 
   expect(sent).toContain('Stage and upload shared files')
   expect(sent).toContain(question)
   expect(sent).not.toContain('staged, uploaded, and sent to Capy threads')
-  expect({ model: first.model, effort: first.output_config.effort }).toEqual({ model: 'claude-sonnet-5-5', effort: 'medium' })
+  expect({
+    model: first.model,
+    effort: first.output_config.effort,
+    fallbacks: first.fallbacks ?? null,
+    concise: first.system.some((block) => block.text.includes('Output style: concise.'))
+  }).toEqual({ model: 'claude-haiku-5-5', effort: 'medium', fallbacks: null, concise: true })
 
   await page.getByRole('combobox', { name: 'Thinking effort' }).click()
   await page.getByRole('option', { name: 'High', exact: true }).click()

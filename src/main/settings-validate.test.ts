@@ -14,6 +14,7 @@ describe('parseStoredSettings', () => {
       pollSeconds: 5,
       model: 'gpt-4',
       chatEffort: 'ultra',
+      outputStyle: 'verbose',
       notify: 'yes',
       autoAiGuide: false,
       autoRefreshStaleGuides: true
