@@ -15,12 +15,11 @@ test('zooming out keeps the title bar clear of the traffic lights in window pixe
   const { app, page } = h
   const home = page.getByRole('button', { name: 'Home' })
   await expect(home).toBeVisible()
-  const inset = () => page.evaluate(() => {
-    const bar = document.querySelector<HTMLElement>('.title-inset')
-    if (!bar) return null
-    const style = getComputedStyle(bar)
-    return { left: parseFloat(style.paddingLeft), height: bar.getBoundingClientRect().height }
-  })
+  const inset = () =>
+    page.evaluate(`(() => {
+      const bar = document.querySelector('.title-inset')
+      return bar && { left: parseFloat(getComputedStyle(bar).paddingLeft), height: bar.getBoundingClientRect().height }
+    })()`)
   expect(await inset()).toEqual({ left: 84, height: 52 })
 
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.webContents.setZoomFactor(0.5))
