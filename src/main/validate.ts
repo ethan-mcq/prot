@@ -1,4 +1,4 @@
-import { PROMPT_HASH, PROMPT_NAME_MAX, PROMPT_TEXT_MAX } from '@shared/prompts'
+import { PROMPT_HASH, PROMPT_KINDS, PROMPT_NAME_MAX, PROMPT_TEXT_MAX, type PromptKind } from '@shared/prompts'
 import { RISK_LEVELS } from '@shared/types'
 import type {
   CardContext,
@@ -280,7 +280,8 @@ export function parseChatRequest(raw: unknown): ChatRequest {
   return {
     id: nonEmptyStr(value.id, 'Chat id'),
     messages,
-    context: parseViewContext(value.context)
+    context: parseViewContext(value.context),
+    promptHash: value.promptHash === undefined ? undefined : parsePromptHash(value.promptHash)
   }
 }
 
@@ -316,6 +317,10 @@ export function parsePromptHash(raw: unknown): string {
   const hash = str(raw, 'prompt hash')
   if (!PROMPT_HASH.test(hash)) throw new Error('A prompt hash is 12 hex characters')
   return hash
+}
+
+export function parsePromptKind(raw: unknown): PromptKind {
+  return oneOf(raw, PROMPT_KINDS, 'Prompt kind')
 }
 
 export function parsePromptText(raw: unknown): string {

@@ -314,9 +314,9 @@ function ReviewScreen({ initial, viewer }: { initial: PullDetail; viewer: string
           {drift.kind === 'significant' && (
             <StaleGuideNotice drift={drift} loading={session.ai.status === 'loading'} onRefresh={() => void requestAi(true)} />
           )}
-          {guide.source === 'ai' && guide.promptHash !== prompts.liveHash && (
+          {guide.source === 'ai' && guide.promptHash !== prompts.guide.liveHash && (
             <PromptNotice
-              prompts={prompts}
+              prompts={prompts.guide}
               guideHash={guide.promptHash}
               loading={session.ai.status === 'loading'}
               canRegenerate={keys.anthropic}
@@ -449,7 +449,7 @@ function GuideChip({ onRequest }: { onRequest: (refresh: boolean) => void }) {
 
   return (
     <div
-      title={guide.source === 'ai' ? `Written with prompt ${promptLabel(prompts, guide.promptHash)}` : undefined}
+      title={guide.source === 'ai' ? `Written with prompt ${promptLabel(prompts.guide, guide.promptHash)}` : undefined}
       className="flex h-7 items-center gap-1 rounded-full bg-tab pr-0.5 pl-2.5 font-mono text-[11px] text-tab-foreground"
     >
       {ai ? <Sparkles className="size-3 text-violet-500 dark:text-violet-300" /> : <span className="size-1.5 rounded-full bg-current opacity-60" />}

@@ -326,6 +326,8 @@ export type ChatRequest = {
   id: string
   messages: ChatMessage[]
   context: ViewContext
+  // The chat prompt version the thread started with; absent means the live one.
+  promptHash?: string
 }
 
 export type ChatEvent =
@@ -340,8 +342,6 @@ export type AttachmentStatus = 'importing' | 'ready' | 'link-only' | 'failed'
 export type Attachment = {
   url: string
   name: string
-  // "description" or "comment by <login>".
-  source: string
   size: number | null
   kind: AttachmentKind
   status: AttachmentStatus

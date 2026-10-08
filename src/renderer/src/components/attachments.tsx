@@ -98,11 +98,7 @@ export function AttachmentsRow() {
                 )}
                 <span className="min-w-0">
                   <span className="block truncate text-[12px] text-foreground/90">{item.name}</span>
-                  <span className="block truncate text-[10.5px] text-muted-foreground">
-                    {item.size !== null && `${formatSize(item.size)} · `}
-                    {item.status === 'link-only' ? 'link only · ' : item.status === 'failed' ? 'not imported · ' : ''}
-                    {item.source}
-                  </span>
+                  <ChipDetail item={item} />
                 </span>
               </button>
             )}
@@ -114,11 +110,21 @@ export function AttachmentsRow() {
   )
 }
 
+const STATUS_NOTE: Partial<Record<Attachment['status'], string>> = { 'link-only': 'link only', failed: 'not imported' }
+
+function ChipDetail({ item }: { item: Attachment }) {
+  const parts: string[] = []
+  if (item.size !== null) parts.push(formatSize(item.size))
+  const note = STATUS_NOTE[item.status]
+  if (note !== undefined) parts.push(note)
+  if (parts.length === 0) return null
+  return <span className="block truncate text-[10.5px] text-muted-foreground">{parts.join(' · ')}</span>
+}
+
 function Caption({ item }: { item: Attachment }) {
   return (
-    <figcaption className="leading-4" title={`${item.name} · ${item.source}`}>
-      <span className="block truncate text-[11.5px] text-foreground/85">{item.name}</span>
-      <span className="block truncate text-[10.5px] text-muted-foreground">{item.source}</span>
+    <figcaption className="truncate text-[11.5px] leading-4 text-foreground/85" title={item.name}>
+      {item.name}
     </figcaption>
   )
 }
@@ -132,7 +138,7 @@ function Lightbox({ item, onClose }: { item: Attachment | null; onClose: () => v
           <div className="flex items-center gap-3 px-1 font-mono text-[11.5px]">
             <div className="min-w-0 flex-1">
               <DialogTitle className="truncate text-[12.5px] font-medium">{item.name}</DialogTitle>
-              <DialogDescription className="truncate text-[11px]">{item.source}</DialogDescription>
+              <DialogDescription className="sr-only">Attached to the pull request description</DialogDescription>
             </div>
             <Button
               variant="outline"

@@ -1,8 +1,10 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { IPC } from '@shared/ipc'
+import { versionOrLive } from '@shared/prompts'
 import type { ChatEvent, ChatRequest } from '@shared/types'
 import { attachViewContext, buildChatSystem } from './chat-context'
 import { createClient, describeAiError, modelParams, refusalMessage } from './claude'
+import type { PromptStore } from './prompt-store'
 import type { PullService } from './pulls'
 import type { SecretsStore } from './secrets'
 import type { SettingsStore } from './settings'
@@ -16,6 +18,7 @@ export class ChatService {
     private readonly secrets: SecretsStore,
     private readonly settings: SettingsStore,
     private readonly pulls: PullService,
+    private readonly prompts: PromptStore,
     private readonly emit: (channel: string, event: ChatEvent) => void
   ) {}
 
@@ -39,6 +42,7 @@ export class ChatService {
       const client = await createClient(this.secrets)
       const pull = req.context.pull
       const detail = pull ? await this.pulls.cached(pull.ref) : null
+      const instructions = versionOrLive(await this.prompts.get('chat'), req.promptHash).text
       const settings = this.settings.get()
       const stream = client.beta.messages.stream(
         {
@@ -47,7 +51,7 @@ export class ChatService {
           system: [
             {
               type: 'text',
-              text: buildChatSystem(detail),
+              text: buildChatSystem(instructions, detail),
               cache_control: { type: 'ephemeral' }
             }
           ],

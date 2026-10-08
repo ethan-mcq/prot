@@ -47,10 +47,11 @@ function detail(overrides: Partial<PullDetail> = {}): PullDetail {
 }
 
 describe('buildChatSystem', () => {
-  it('describes the PR from its code only, listing file paths with status and line counts', () => {
-    const system = buildChatSystem(detail())
-    expect(system.slice(system.indexOf('<pull_request>'))).toBe(
+  it('is the given chat prompt followed by the PR from its code only, listing file paths with status and line counts', () => {
+    expect(buildChatSystem('You answer review questions.', detail())).toBe(
       [
+        'You answer review questions.',
+        '',
         '<pull_request>',
         'Author: ada',
         'Branches: retry into main',
@@ -63,9 +64,13 @@ describe('buildChatSystem', () => {
     )
   })
 
+  it('is the chat prompt alone when no pull request is open', () => {
+    expect(buildChatSystem('You answer review questions.', null)).toBe('You answer review questions.')
+  })
+
   it('keeps the PR title and description out of everything sent to Claude', () => {
     const pull = detail({ body: 'Fixes the flaky zebra uploader.' })
-    const system = buildChatSystem(pull)
+    const system = buildChatSystem('You answer review questions.', pull)
     const messages = attachViewContext([{ role: 'user', content: 'What changed?' }], {
       ...emptyContext,
       pull: { ref: pull.summary.ref, author: 'ada' },
@@ -79,7 +84,7 @@ describe('buildChatSystem', () => {
 
   it('caps the file list and says how many were left out', () => {
     const files = Array.from({ length: 450 }, (_, i) => file(`f${i}.ts`))
-    const system = buildChatSystem(detail({ files }))
+    const system = buildChatSystem('You answer review questions.', detail({ files }))
     expect(system).toContain('M f399.ts')
     expect(system).not.toContain('M f400.ts')
     expect(system).toContain('... and 50 more files')
@@ -142,7 +147,7 @@ describe('buildViewContext', () => {
     )
   })
 
-  it('puts the risk, synopsis and every section of the story before the step, and tells Claude the screen is background', () => {
+  it('puts the risk, synopsis and every section of the story before the step', () => {
     const block = buildViewContext({
       ...emptyContext,
       story: {
@@ -162,9 +167,8 @@ describe('buildViewContext', () => {
       },
       step: { kind: 'overview' }
     })
-    const system = buildChatSystem(null)
-    expect({ block, background: system.includes('If it doesn\'t, answer the question on its own terms without mentioning the screen, the page or the context.') }).toEqual({
-      block: [
+    expect(block).toBe(
+      [
         '<view_context>',
         'Risk: medium. takeShare has no tests.',
         'Synopsis: Routes Android shares into a thread.',
@@ -176,9 +180,8 @@ describe('buildViewContext', () => {
         '   - file app.config.ts',
         'Guide step: overview',
         '</view_context>'
-      ].join('\n'),
-      background: true
-    })
+      ].join('\n')
+    )
   })
 
   it('truncates the patch at 30000 characters', () => {

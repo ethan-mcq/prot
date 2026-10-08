@@ -13,9 +13,9 @@ import {
   type ReviewComment,
   type ReviewState
 } from '@shared/types'
-import type { AttachmentDocument } from './attachment-links'
+import { attachmentLinks, type AttachmentLink } from './attachment-links'
 
-export type RawUser = { login: string; avatar_url: string } | null
+export type RawUser = { login: string; avatar_url: string; type?: string } | null
 type RawLabel = { name: string; color: string }
 
 export type RawGraphqlPull = {
@@ -83,7 +83,6 @@ export type RawReviewComment = {
   line?: number | null
   side?: string | null
   body: string
-  body_html?: string | null
   user: RawUser
   created_at: string
   in_reply_to_id?: number | null
@@ -95,14 +94,7 @@ export type RawReview = {
   user: RawUser
   state: string
   body: string | null
-  body_html?: string | null
   submitted_at?: string | null
-}
-
-export type RawIssueComment = {
-  user: RawUser
-  body: string | null
-  body_html?: string | null
 }
 
 // GitHub returns null for deleted accounts.
@@ -291,16 +283,12 @@ export function toPullDetail(
   }
 }
 
-export function toAttachmentDocuments(
-  raw: RawPull,
-  issueComments: RawIssueComment[],
-  comments: RawReviewComment[],
-  reviews: RawReview[]
-): AttachmentDocument[] {
-  const documents: AttachmentDocument[] = [{ source: 'description', html: raw.body_html ?? null, markdown: raw.body ?? '' }]
-  for (const item of [...issueComments, ...comments, ...reviews]) {
-    if (!item.body && !item.body_html) continue
-    documents.push({ source: `comment by ${toUser(item.user).login}`, html: item.body_html ?? null, markdown: item.body ?? '' })
-  }
-  return documents
+function isBot(user: RawUser): boolean {
+  return user !== null && (user.type === 'Bot' || user.login.endsWith('[bot]'))
+}
+
+// Only a person's PR description is read for attachments; comments and bot-written descriptions never are.
+export function descriptionAttachments(raw: RawPull, web: string): AttachmentLink[] {
+  if (isBot(raw.user)) return []
+  return attachmentLinks(raw.body_html ?? null, raw.body ?? '', web)
 }

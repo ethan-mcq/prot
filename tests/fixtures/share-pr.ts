@@ -502,19 +502,6 @@ function bodyHtml(base: string): string {
   ].join('\n')
 }
 
-export function issueComments(base: string, full: boolean) {
-  const comment = {
-    id: 6001,
-    user: { login: 'kai', avatar_url: 'https://avatars.githubusercontent.com/u/3?v=4' },
-    body: `Inbox after sharing two photos:\n\n![Inbox with two shared photos](${base}${attachmentPaths.inbox})`,
-    created_at: '2026-10-06T08:30:00Z',
-    html_url: `https://github.com/${OWNER}/${REPO}/pull/${NUMBER}#issuecomment-6001`
-  }
-  if (!full) return [comment]
-  const html = `<p>Inbox after sharing two photos:</p>\n<p><a target="_blank" rel="noopener noreferrer" href="${base}${attachmentPaths.inbox}"><img src="${base}${attachmentPaths.inbox}" alt="Inbox with two shared photos" style="max-width: 100%;"></a></p>`
-  return [{ ...comment, body_html: html }]
-}
-
 function pngChunk(type: string, data: Buffer): Buffer {
   const length = Buffer.alloc(4)
   length.writeUInt32BE(data.length)
@@ -654,15 +641,18 @@ export function reply(rootId: number, text: string, id: number) {
   }
 }
 
-export const reviews = [
-  {
-    id: 7001,
-    user: { login: 'kai', avatar_url: 'https://avatars.githubusercontent.com/u/3?v=4' },
-    state: 'COMMENTED',
-    body: '',
-    submitted_at: '2026-10-06T08:00:00Z'
-  }
-]
+// kai's screenshot sits in a review body, which prot fetches but never reads for attachments.
+export function reviews(base: string) {
+  return [
+    {
+      id: 7001,
+      user: { login: 'kai', avatar_url: 'https://avatars.githubusercontent.com/u/3?v=4' },
+      state: 'COMMENTED',
+      body: `Inbox after sharing two photos:\n\n![Inbox with two shared photos](${base}${attachmentPaths.inbox})`,
+      submitted_at: '2026-10-06T08:00:00Z'
+    }
+  ]
+}
 
 export function fileContent(state: PullState, path: string, ref: string | null): string | null {
   if (ref === BASE_SHA) return baseFiles[path] ?? null

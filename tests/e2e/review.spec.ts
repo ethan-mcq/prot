@@ -497,8 +497,8 @@ test('a saved, renamed review prompt made live is the system prompt the next AI 
   await expect.poll(() => guideSystems().length).toBe(1)
 
   await page.getByRole('button', { name: 'Settings' }).click()
-  await page.getByRole('button', { name: 'Review prompt…' }).click()
-  const dialog = page.getByRole('dialog', { name: 'Review prompt' })
+  await page.getByRole('button', { name: 'System prompts…' }).click()
+  const dialog = page.getByRole('dialog', { name: 'System prompts' })
   const versions = dialog.getByRole('listbox', { name: 'Prompt versions' })
   await expect(versions.getByRole('option')).toHaveText([/built-in default/])
   const editor = dialog.getByRole('textbox', { name: 'System prompt' })

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArrowUp, Loader2, Settings as SettingsIcon, Square, TextSelect, X } from 'lucide-react'
+import { displayName, versionOrLive } from '@shared/prompts'
 import { AI_MODELS, EFFORTS, pullKey, type AiModel, type ChatEvent, type ChatMessage, type Effort, type ViewContext } from '@shared/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -18,7 +19,10 @@ type Turn =
   | { role: 'user'; content: string }
   | { role: 'assistant'; id: string; content: string; status: 'streaming' | 'done' | 'failed'; error?: string }
 
-type Threads = Record<string, Turn[]>
+// promptHash is the chat prompt live when the thread's first message was sent; later turns keep it.
+type Thread = { promptHash: string; turns: Turn[] }
+
+type Threads = Record<string, Thread>
 
 const MODEL_NAMES: Record<AiModel, string> = {
   'claude-opus-5-5': 'Claude Opus 5.5',
@@ -43,7 +47,8 @@ const HAS_EFFORT: Record<AiModel, boolean> = {
 const SELECTION_LIMIT = 4000
 
 function applyEvent(threads: Threads, event: ChatEvent): Threads {
-  for (const [key, turns] of Object.entries(threads)) {
+  for (const [key, thread] of Object.entries(threads)) {
+    const turns = thread.turns
     const index = turns.findIndex((turn) => turn.role === 'assistant' && turn.id === event.id)
     const turn = turns[index]
     if (!turn || turn.role !== 'assistant') continue
@@ -53,7 +58,7 @@ function applyEvent(threads: Threads, event: ChatEvent): Threads {
         : event.type === 'done'
           ? { ...turn, status: 'done' as const }
           : { ...turn, status: 'failed' as const, error: event.message }
-    return { ...threads, [key]: turns.map((t, i) => (i === index ? next : t)) }
+    return { ...threads, [key]: { ...thread, turns: turns.map((t, i) => (i === index ? next : t)) } }
   }
   return threads
 }
@@ -91,28 +96,30 @@ function useMainSelection() {
 
 export function ChatWidget() {
   const { view, questions, chatOpen, setChatOpen } = useViewStore()
-  const { keys } = usePrefs()
+  const { keys, prompts } = usePrefs()
   const [threads, setThreads] = useState<Threads>({})
   const [setup, setSetup] = useState(false)
   const [selection, setSelection] = useMainSelection()
   const threadKey = view.pull ? pullKey(view.pull.ref) : 'none'
-  const turns = threads[threadKey] ?? []
+  const thread = threads[threadKey]
+  const turns = thread?.turns ?? []
   const streaming = turns.find((turn) => turn.role === 'assistant' && turn.status === 'streaming')
 
   useEffect(() => window.prot.ai.onEvent((event) => setThreads((prev) => applyEvent(prev, event))), [])
 
   function send(text: string) {
     const id = crypto.randomUUID()
+    const promptHash = thread?.promptHash ?? prompts.chat.liveHash
     const history: Turn[] = [...turns, { role: 'user', content: text }]
     const messages: ChatMessage[] = history
       .filter((turn) => turn.role === 'user' || (turn.status === 'done' && turn.content))
       .map((turn) => ({ role: turn.role, content: turn.content }))
     setThreads((prev) => ({
       ...prev,
-      [threadKey]: [...history, { role: 'assistant', id, content: '', status: 'streaming' }]
+      [threadKey]: { promptHash, turns: [...history, { role: 'assistant', id, content: '', status: 'streaming' }] }
     }))
     window.prot.ai
-      .chat({ id, messages, context: { ...view, selection } })
+      .chat({ id, messages, context: { ...view, selection }, promptHash })
       .catch((error: unknown) =>
         setThreads((prev) => applyEvent(prev, { id, type: 'error', message: errorMessage(error) }))
       )
@@ -164,9 +171,16 @@ export function ChatWidget() {
         <KeySetup onDone={() => setSetup(false)} />
       ) : (
         <>
-          <p className="shrink-0 truncate px-4 pb-1.5 font-mono text-[11px] text-muted-foreground" title={context ?? undefined}>
-            {context ? `seeing: ${context}` : 'open a pull request so prot can see it'}
-          </p>
+          <div className="flex shrink-0 gap-3 px-4 pb-1.5 font-mono text-[11px] text-muted-foreground">
+            <p className="min-w-0 flex-1 truncate" title={context ?? undefined}>
+              {context ? `seeing: ${context}` : 'open a pull request so prot can see it'}
+            </p>
+            {thread && (
+              <p className="max-w-[40%] shrink-0 truncate" title="The chat prompt this conversation started with">
+                prompt: {displayName(versionOrLive(prompts.chat, thread.promptHash))}
+              </p>
+            )}
+          </div>
           <Messages turns={turns} questions={view.pull ? questions : []} onAsk={send} />
           <Composer
             busy={streaming !== undefined}

@@ -6,14 +6,17 @@ import {
   findVersion,
   livePrompt,
   normalizePrompt,
+  PROMPT_KINDS,
   PROMPT_NAME_MAX,
   promptHash,
+  type PromptKind,
   type PromptLibrary,
   type PromptVersion
 } from '@shared/prompts'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { PaneButton, PaneHeader } from '@/components/pane'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { relativeTime } from '@/lib/paths'
 import { usePrefs } from '@/lib/prefs'
 import { cn, errorMessage } from '@/lib/utils'
@@ -34,8 +37,25 @@ function useHash(text: string): string | null {
   return hashed?.text === text ? hashed.hash : null
 }
 
+const KINDS: Record<PromptKind, { tab: string; detail: string; placeholder: string; deleteNote: string }> = {
+  guide: {
+    tab: 'Review guide',
+    detail: 'the system prompt AI guides are written with',
+    placeholder: 'Write the system prompt for AI guides',
+    deleteNote: 'Guides already written with it keep working.'
+  },
+  chat: {
+    tab: 'Chat',
+    detail: 'sent at the start of each new chat',
+    placeholder: 'Write the system prompt for Ask prot chats',
+    deleteNote: 'Chats started with it switch to the live prompt.'
+  }
+}
+
 function PromptEditor({ onClose }: { onClose: () => void }) {
-  const { prompts, setPrompts } = usePrefs()
+  const { prompts: libraries, setPrompts } = usePrefs()
+  const [kind, setKind] = useState<PromptKind>('guide')
+  const prompts = libraries[kind]
   const [selectedHash, setSelectedHash] = useState(prompts.liveHash)
   const selected = findVersion(prompts, selectedHash) ?? livePrompt(prompts)
   const [draft, setDraft] = useState(selected.text)
@@ -60,12 +80,20 @@ function PromptEditor({ onClose }: { onClose: () => void }) {
     setRenaming(false)
   }
 
+  function switchKind(next: PromptKind) {
+    if (next === kind) return
+    guard(() => {
+      setKind(next)
+      select(livePrompt(libraries[next]))
+    })
+  }
+
   async function save() {
     setSaving(true)
     try {
-      const { library, version } = await window.prot.prompts.save(draft)
+      const { library, version } = await window.prot.prompts.save(kind, draft)
       const existed = findVersion(prompts, version.hash) !== undefined
-      setPrompts(library)
+      setPrompts(kind, library)
       select(version)
       toast.success(existed ? `Already saved as ${displayName(version)}` : `Saved as ${version.hash}`)
     } catch (error) {
@@ -77,7 +105,7 @@ function PromptEditor({ onClose }: { onClose: () => void }) {
 
   async function run(change: () => Promise<PromptLibrary>, failure: string) {
     try {
-      setPrompts(await change())
+      setPrompts(kind, await change())
     } catch (error) {
       toast.error(failure, { description: errorMessage(error) })
     }
@@ -85,8 +113,8 @@ function PromptEditor({ onClose }: { onClose: () => void }) {
 
   async function remove(version: PromptVersion) {
     try {
-      const library = await window.prot.prompts.remove(version.hash)
-      setPrompts(library)
+      const library = await window.prot.prompts.remove(kind, version.hash)
+      setPrompts(kind, library)
       if (version.hash === selected.hash) select(livePrompt(library))
       toast.success(`Deleted ${displayName(version)}`)
     } catch (error) {
@@ -97,7 +125,7 @@ function PromptEditor({ onClose }: { onClose: () => void }) {
   function finishRename(name: string | null) {
     setRenaming(false)
     if (name === null || name.trim() === (selected.name ?? '')) return
-    void run(() => window.prot.prompts.rename(selected.hash, name), 'Could not rename the prompt')
+    void run(() => window.prot.prompts.rename(kind, selected.hash, name), 'Could not rename the prompt')
   }
 
   function onListKey(event: KeyboardEvent<HTMLDivElement>) {
@@ -107,6 +135,78 @@ function PromptEditor({ onClose }: { onClose: () => void }) {
     const next = versions[versions.findIndex((version) => version.hash === selected.hash) + step]
     if (next) guard(() => select(next))
   }
+
+  const body = (
+    <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,10rem)_minmax(0,1fr)] md:grid-cols-[272px_minmax(0,1fr)] md:grid-rows-1">
+      <div
+        role="listbox"
+        aria-label="Prompt versions"
+        tabIndex={0}
+        onKeyDown={onListKey}
+        className="scroll-quiet min-h-0 space-y-px overflow-y-auto border-b border-pane-border p-2 outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset md:border-r md:border-b-0"
+      >
+        {versions.map((version) => (
+          <VersionRow
+            key={version.hash}
+            version={version}
+            selected={version.hash === selected.hash}
+            live={version.hash === prompts.liveHash}
+            onSelect={() => version.hash !== selected.hash && guard(() => select(version))}
+            onDelete={() => setDeleting(version)}
+          />
+        ))}
+      </div>
+      <div className="flex min-h-0 flex-col">
+        <div className="flex h-11 shrink-0 items-center gap-2 border-b border-pane-border px-3.5">
+          {renaming ? (
+            <NameField key={selected.hash} version={selected} onDone={finishRename} />
+          ) : (
+            <>
+              <span className={cn('min-w-0 truncate text-[13px] font-medium', selected.name === null && 'font-mono')}>
+                {displayName(selected)}
+              </span>
+              <PaneButton aria-label="Rename prompt" title="Rename this version" onClick={() => setRenaming(true)}>
+                <Pencil />
+              </PaneButton>
+            </>
+          )}
+          <span className="flex-1" />
+          {live && <LiveBadge />}
+          {selected.builtIn && <BuiltInTag />}
+          <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
+            {selected.name !== null && `${selected.hash} · `}
+            {relativeTime(selected.createdAt)}
+          </span>
+        </div>
+        <textarea
+          aria-label="System prompt"
+          value={draft}
+          spellCheck={false}
+          onChange={(event) => setDraft(event.target.value)}
+          className="scroll-quiet min-h-0 flex-1 resize-none bg-transparent px-3.5 py-3 font-mono text-[12px] leading-[19px] outline-none placeholder:text-muted-foreground"
+          placeholder={KINDS[kind].placeholder}
+        />
+        <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-pane-border px-3.5 py-2">
+          <span className="mr-auto font-mono text-[11px] text-muted-foreground tabular-nums">
+            {draft.length.toLocaleString()} characters ·{' '}
+            {normalized === '' ? 'empty' : draftHash === null ? 'hashing' : dirty ? `saves as ${draftHash}` : draftHash}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={live}
+            onClick={() => void run(() => window.prot.prompts.setLive(kind, selected.hash), 'Could not make the prompt live')}
+          >
+            Make live
+          </Button>
+          <Button size="sm" disabled={!dirty || normalized === '' || saving} onClick={() => void save()}>
+            {saving && <Loader2 className="animate-spin" />}
+            Save as new version
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
 
   return (
     <DialogContent
@@ -130,10 +230,10 @@ function PromptEditor({ onClose }: { onClose: () => void }) {
         icon={<FileText />}
         title={
           <DialogTitle asChild>
-            <span className="text-[12.5px] font-medium">Review prompt</span>
+            <span className="text-[12.5px] font-medium">System prompts</span>
           </DialogTitle>
         }
-        detail="the system prompt AI guides are written with"
+        detail={KINDS[kind].detail}
         className="border-b border-pane-border"
         actions={
           <PaneButton aria-label="Close" onClick={() => guard(onClose)}>
@@ -142,77 +242,22 @@ function PromptEditor({ onClose }: { onClose: () => void }) {
         }
       />
       <DialogDescription className="sr-only">
-        Edit the system prompt, save it as a new version, name versions, and choose which one is live.
+        Edit the system prompts for AI guides and for chat, save them as versions, name versions, and choose which one is live.
       </DialogDescription>
-      <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,10rem)_minmax(0,1fr)] md:grid-cols-[272px_minmax(0,1fr)] md:grid-rows-1">
-        <div
-          role="listbox"
-          aria-label="Prompt versions"
-          tabIndex={0}
-          onKeyDown={onListKey}
-          className="scroll-quiet min-h-0 space-y-px overflow-y-auto border-b border-pane-border p-2 outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset md:border-r md:border-b-0"
-        >
-          {versions.map((version) => (
-            <VersionRow
-              key={version.hash}
-              version={version}
-              selected={version.hash === selected.hash}
-              live={version.hash === prompts.liveHash}
-              onSelect={() => version.hash !== selected.hash && guard(() => select(version))}
-              onDelete={() => setDeleting(version)}
-            />
+      <Tabs value={kind} onValueChange={(next) => switchKind(next as PromptKind)} className="min-h-0 flex-1 gap-0">
+        <TabsList variant="line" aria-label="Prompt kinds" className="h-9 w-full shrink-0 justify-start border-b border-pane-border px-1">
+          {PROMPT_KINDS.map((option) => (
+            <TabsTrigger key={option} value={option} className="flex-none px-2.5 text-[12.5px]">
+              {KINDS[option].tab}
+            </TabsTrigger>
           ))}
-        </div>
-        <div className="flex min-h-0 flex-col">
-          <div className="flex h-11 shrink-0 items-center gap-2 border-b border-pane-border px-3.5">
-            {renaming ? (
-              <NameField key={selected.hash} version={selected} onDone={finishRename} />
-            ) : (
-              <>
-                <span className={cn('min-w-0 truncate text-[13px] font-medium', selected.name === null && 'font-mono')}>
-                  {displayName(selected)}
-                </span>
-                <PaneButton aria-label="Rename prompt" title="Rename this version" onClick={() => setRenaming(true)}>
-                  <Pencil />
-                </PaneButton>
-              </>
-            )}
-            <span className="flex-1" />
-            {live && <LiveBadge />}
-            {selected.builtIn && <BuiltInTag />}
-            <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
-              {selected.name !== null && `${selected.hash} · `}
-              {relativeTime(selected.createdAt)}
-            </span>
-          </div>
-          <textarea
-            aria-label="System prompt"
-            value={draft}
-            spellCheck={false}
-            onChange={(event) => setDraft(event.target.value)}
-            className="scroll-quiet min-h-0 flex-1 resize-none bg-transparent px-3.5 py-3 font-mono text-[12px] leading-[19px] outline-none placeholder:text-muted-foreground"
-            placeholder="Write the system prompt for AI guides"
-          />
-          <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-pane-border px-3.5 py-2">
-            <span className="mr-auto font-mono text-[11px] text-muted-foreground tabular-nums">
-              {draft.length.toLocaleString()} characters ·{' '}
-              {normalized === '' ? 'empty' : draftHash === null ? 'hashing' : dirty ? `saves as ${draftHash}` : draftHash}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={live}
-              onClick={() => void run(() => window.prot.prompts.setLive(selected.hash), 'Could not make the prompt live')}
-            >
-              Make live
-            </Button>
-            <Button size="sm" disabled={!dirty || normalized === '' || saving} onClick={() => void save()}>
-              {saving && <Loader2 className="animate-spin" />}
-              Save as new version
-            </Button>
-          </div>
-        </div>
-      </div>
+        </TabsList>
+        {PROMPT_KINDS.map((option) => (
+          <TabsContent key={option} value={option} className="flex min-h-0 flex-col">
+            {body}
+          </TabsContent>
+        ))}
+      </Tabs>
       <ConfirmDialog
         open={pending !== null}
         title="Discard your edits?"
@@ -229,7 +274,7 @@ function PromptEditor({ onClose }: { onClose: () => void }) {
       <ConfirmDialog
         open={deleting !== null}
         title="Delete this prompt version?"
-        description="Guides already written with it keep working."
+        description={KINDS[kind].deleteNote}
         keep="Cancel"
         confirm="Delete"
         onKeep={() => setDeleting(null)}

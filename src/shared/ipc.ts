@@ -12,7 +12,7 @@ import type {
   ReviewInput,
   Settings
 } from './types'
-import type { PromptLibrary, PromptVersion } from './prompts'
+import type { PromptKind, PromptLibrary, PromptVersion } from './prompts'
 
 export interface ProtApi {
   auth: {
@@ -36,7 +36,7 @@ export interface ProtApi {
     submitReview(ref: PullRef, input: ReviewInput): Promise<void>
     comment(ref: PullRef, body: string): Promise<void>
     reply(ref: PullRef, commentId: number, body: string): Promise<ReviewComment>
-    // Images, videos and files attached to the description and comments. Imports run in the background.
+    // Images, videos and files attached to the PR description. Imports run in the background.
     attachments(ref: PullRef): Promise<Attachment[]>
     // Fires when an import for the PR settles; list again to see the result.
     onAttachments(cb: (ref: PullRef) => void): () => void
@@ -57,11 +57,11 @@ export interface ProtApi {
     set(patch: Partial<Settings>): Promise<Settings>
   }
   prompts: {
-    get(): Promise<PromptLibrary>
-    save(text: string): Promise<{ library: PromptLibrary; version: PromptVersion }>
-    rename(hash: string, name: string): Promise<PromptLibrary>
-    setLive(hash: string): Promise<PromptLibrary>
-    remove(hash: string): Promise<PromptLibrary>
+    get(kind: PromptKind): Promise<PromptLibrary>
+    save(kind: PromptKind, text: string): Promise<{ library: PromptLibrary; version: PromptVersion }>
+    rename(kind: PromptKind, hash: string, name: string): Promise<PromptLibrary>
+    setLive(kind: PromptKind, hash: string): Promise<PromptLibrary>
+    remove(kind: PromptKind, hash: string): Promise<PromptLibrary>
   }
   keys: {
     get(): Promise<KeysState>

@@ -1,5 +1,5 @@
 import { pullKey, type PullDetail, type PullRef, type PullState, type ReviewEvent, type ReviewInput } from '@shared/types'
-import { attachmentLinks, type AttachmentDocument } from './attachment-links'
+import type { AttachmentLink } from './attachment-links'
 import type { AttachmentService } from './attachments'
 import type { GuideService } from './guide-ai'
 
@@ -27,13 +27,12 @@ export class PullCache {
 
   constructor(
     private readonly guides: GuideService,
-    private readonly attachments: AttachmentService,
-    private readonly web: string
+    private readonly attachments: AttachmentService
   ) {}
 
-  fetched(ref: PullRef, detail: PullDetail, documents: AttachmentDocument[]): void {
+  fetched(ref: PullRef, detail: PullDetail, links: AttachmentLink[]): void {
     if (this.finished.get(pullKey(ref)) === detail.head.sha) return
-    this.attachments.import(ref, attachmentLinks(documents, this.web))
+    this.attachments.import(ref, links)
   }
 
   async reviewed(ref: PullRef, input: ReviewInput): Promise<void> {

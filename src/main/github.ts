@@ -9,8 +9,8 @@ import type {
 } from '@shared/types'
 import {
   graphqlUrl,
+  descriptionAttachments,
   mergeBuckets,
-  toAttachmentDocuments,
   toPullDetail,
   toPullsResult,
   toRestSummary,
@@ -18,7 +18,6 @@ import {
   toSearchResult,
   toUser,
   type RawFile,
-  type RawIssueComment,
   type RawPull,
   type RawPullsResponse,
   type RawReview,
@@ -26,7 +25,7 @@ import {
   type RawSearchResponse,
   type RawUser
 } from './github-map'
-import { webOrigin, type AttachmentDocument } from './attachment-links'
+import { webOrigin, type AttachmentLink } from './attachment-links'
 
 const MAX_FILE_PAGES = 30
 // Adds body_html, whose image links are signed and fetchable, next to the raw markdown body.
@@ -122,19 +121,18 @@ export class GitHubClient {
     return mergeBuckets(review, mine)
   }
 
-  async getPull(ref: PullRef, viewerLogin: string): Promise<{ detail: PullDetail; documents: AttachmentDocument[] }> {
+  async getPull(ref: PullRef, viewerLogin: string): Promise<{ detail: PullDetail; attachments: AttachmentLink[] }> {
     const base = repoPath(ref)
-    const list = { query: { per_page: '100' }, accept: FULL_JSON }
-    const [raw, files, issueComments, comments, reviews] = await Promise.all([
+    const list = { query: { per_page: '100' } }
+    const [raw, files, comments, reviews] = await Promise.all([
       this.json<RawPull>(`${base}/pulls/${ref.number}`, { accept: FULL_JSON }),
       this.listFiles(ref),
-      this.json<RawIssueComment[]>(`${base}/issues/${ref.number}/comments`, list),
       this.json<RawReviewComment[]>(`${base}/pulls/${ref.number}/comments`, list),
       this.json<RawReview[]>(`${base}/pulls/${ref.number}/reviews`, list)
     ])
     return {
       detail: toPullDetail(ref, viewerLogin, raw, files, comments, reviews),
-      documents: toAttachmentDocuments(raw, issueComments, comments, reviews)
+      attachments: descriptionAttachments(raw, webOrigin(this.baseUrl))
     }
   }
 

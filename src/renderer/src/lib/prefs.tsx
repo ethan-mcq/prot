@@ -1,14 +1,14 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
-import type { PromptLibrary } from '@shared/prompts'
+import type { PromptKind, PromptLibraries, PromptLibrary } from '@shared/prompts'
 import type { KeysState, Settings } from '@shared/types'
 
-type Loaded = { settings: Settings; keys: KeysState; prompts: PromptLibrary }
+type Loaded = { settings: Settings; keys: KeysState; prompts: PromptLibraries }
 
 type Prefs = Loaded & {
   resolvedTheme: 'light' | 'dark'
   updateSettings: (patch: Partial<Settings>) => Promise<void>
   setAnthropicKey: (key: string | null) => Promise<void>
-  setPrompts: (prompts: PromptLibrary) => void
+  setPrompts: (kind: PromptKind, library: PromptLibrary) => void
 }
 
 const PrefsContext = createContext<Prefs | null>(null)
@@ -37,8 +37,8 @@ export function PrefsProvider({ children }: { children: ReactNode }) {
   const systemDark = useSystemDark()
 
   useEffect(() => {
-    Promise.all([window.prot.settings.get(), window.prot.keys.get(), window.prot.prompts.get()]).then(([settings, keys, prompts]) =>
-      setLoaded({ settings, keys, prompts })
+    Promise.all([window.prot.settings.get(), window.prot.keys.get(), window.prot.prompts.get('guide'), window.prot.prompts.get('chat')]).then(
+      ([settings, keys, guide, chat]) => setLoaded({ settings, keys, prompts: { guide, chat } })
     )
   }, [])
 
@@ -60,8 +60,8 @@ export function PrefsProvider({ children }: { children: ReactNode }) {
     setLoaded((prev) => (prev ? { ...prev, keys } : prev))
   }, [])
 
-  const setPrompts = useCallback((prompts: PromptLibrary) => {
-    setLoaded((prev) => (prev ? { ...prev, prompts } : prev))
+  const setPrompts = useCallback((kind: PromptKind, library: PromptLibrary) => {
+    setLoaded((prev) => (prev ? { ...prev, prompts: { ...prev.prompts, [kind]: library } } : prev))
   }, [])
 
   if (!loaded) return null

@@ -111,7 +111,7 @@ export class GuideService {
       const { index } = await this.code.index(ref, detail)
       questions = buildStoryGuide(detail, index).questions
     }
-    const library = await this.prompts.get()
+    const library = await this.prompts.get('guide')
     const seeded = library.versions.find((version) => version.builtIn) ?? livePrompt(library)
     const promptHash = typeof cached.promptHash === 'string' ? cached.promptHash : seeded.hash
     return { ...cached, questions, promptHash }
@@ -146,7 +146,7 @@ export class GuideService {
     const client = await createClient(this.secrets)
     const { index, heads } = await this.code.index(ref, detail)
     const story = buildStoryGuide(detail, index)
-    const live = livePrompt(await this.prompts.get())
+    const live = livePrompt(await this.prompts.get('guide'))
     const prompt = buildGuidePrompt(detail, story, heads, live.text)
     const model = this.settings.get().model
     let message

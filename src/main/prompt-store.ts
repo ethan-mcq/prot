@@ -2,12 +2,14 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import {
   PROMPT_HASH,
-  reconcile,
+  PROMPT_KINDS,
+  reconcileAll,
   removeVersion,
   renameVersion,
   saveVersion,
-  seedLibrary,
   setLive,
+  type PromptKind,
+  type PromptLibraries,
   type PromptLibrary,
   type PromptVersion
 } from '@shared/prompts'
@@ -43,67 +45,84 @@ function parseLibrary(raw: unknown): PromptLibrary | null {
   return { versions, liveHash: value.liveHash, retiredBuiltIns }
 }
 
-function parseStored(raw: string): PromptLibrary | null {
+function parseStored(raw: string): Partial<PromptLibraries> | null {
+  let value: unknown
   try {
-    return parseLibrary(JSON.parse(raw))
+    value = JSON.parse(raw)
   } catch {
     return null
   }
+  if (typeof value !== 'object' || value === null) return null
+  // Files written before the chat prompt was versioned hold one library, the guide's.
+  if ('versions' in value) {
+    const guide = parseLibrary(value)
+    return guide === null ? null : { guide }
+  }
+  const stored: Partial<PromptLibraries> = {}
+  for (const kind of PROMPT_KINDS) {
+    const entry = (value as Record<string, unknown>)[kind]
+    if (entry === undefined) continue
+    const library = parseLibrary(entry)
+    if (library === null) return null
+    stored[kind] = library
+  }
+  return stored
 }
 
 export class PromptStore {
-  private current: Promise<PromptLibrary>
+  private current: Promise<PromptLibraries>
 
   constructor(
     private readonly file: string,
-    private readonly builtInText: string
+    private readonly builtIns: Record<PromptKind, string>
   ) {
     this.current = this.load()
   }
 
-  get(): Promise<PromptLibrary> {
-    return this.current
+  async get(kind: PromptKind): Promise<PromptLibrary> {
+    return (await this.current)[kind]
   }
 
-  save(text: string): Promise<{ library: PromptLibrary; version: PromptVersion }> {
-    return this.update((lib) => saveVersion(lib, text, new Date().toISOString()))
+  save(kind: PromptKind, text: string): Promise<{ library: PromptLibrary; version: PromptVersion }> {
+    return this.update(kind, (lib) => saveVersion(lib, text, new Date().toISOString()))
   }
 
-  async rename(hash: string, name: string): Promise<PromptLibrary> {
-    return (await this.update(async (lib) => ({ library: renameVersion(lib, hash, name) }))).library
+  async rename(kind: PromptKind, hash: string, name: string): Promise<PromptLibrary> {
+    return (await this.update(kind, async (lib) => ({ library: renameVersion(lib, hash, name) }))).library
   }
 
-  async setLive(hash: string): Promise<PromptLibrary> {
-    return (await this.update(async (lib) => ({ library: setLive(lib, hash) }))).library
+  async setLive(kind: PromptKind, hash: string): Promise<PromptLibrary> {
+    return (await this.update(kind, async (lib) => ({ library: setLive(lib, hash) }))).library
   }
 
-  async remove(hash: string): Promise<PromptLibrary> {
-    return (await this.update(async (lib) => ({ library: removeVersion(lib, hash) }))).library
+  async remove(kind: PromptKind, hash: string): Promise<PromptLibrary> {
+    return (await this.update(kind, async (lib) => ({ library: removeVersion(lib, hash) }))).library
   }
 
-  // Changes run one after another so two quick edits never write from the same stale library.
-  private update<T extends { library: PromptLibrary }>(change: (lib: PromptLibrary) => Promise<T>): Promise<T> {
+  // Changes run one after another so two quick edits never write from the same stale libraries.
+  private update<T extends { library: PromptLibrary }>(kind: PromptKind, change: (lib: PromptLibrary) => Promise<T>): Promise<T> {
     const previous = this.current
-    const next = previous.then(async (lib) => {
-      const changed = await change(lib)
-      if (changed.library !== lib) await this.write(changed.library)
-      return changed
+    const next = previous.then(async (all) => {
+      const changed = await change(all[kind])
+      if (changed.library === all[kind]) return { changed, all }
+      const updated: PromptLibraries = { ...all, [kind]: changed.library }
+      await this.write(updated)
+      return { changed, all: updated }
     })
     this.current = next.then(
-      (changed) => changed.library,
+      ({ all }) => all,
       () => previous
     )
-    return next
+    return next.then(({ changed }) => changed)
   }
 
-  private async load(): Promise<PromptLibrary> {
+  private async load(): Promise<PromptLibraries> {
     const raw = await this.read()
     const stored = raw === null ? null : parseStored(raw)
     if (raw !== null && stored === null) await this.backUp(raw)
-    const now = new Date().toISOString()
-    const library = stored === null ? await seedLibrary(this.builtInText, now) : await reconcile(stored, this.builtInText, now)
-    if (library !== stored) await this.write(library)
-    return library
+    const libraries = await reconcileAll(stored ?? {}, this.builtIns, new Date().toISOString())
+    if (stored === null || PROMPT_KINDS.some((kind) => libraries[kind] !== stored[kind])) await this.write(libraries)
+    return libraries
   }
 
   private async read(): Promise<string | null> {
@@ -120,10 +139,10 @@ export class PromptStore {
     await writeFile(join(dirname(this.file), 'prompts.corrupt.json'), raw)
   }
 
-  private async write(library: PromptLibrary): Promise<void> {
+  private async write(libraries: PromptLibraries): Promise<void> {
     await mkdir(dirname(this.file), { recursive: true })
     const tmp = `${this.file}.tmp`
-    await writeFile(tmp, JSON.stringify(library, null, 2))
+    await writeFile(tmp, JSON.stringify(libraries, null, 2))
     await rename(tmp, this.file)
   }
 }

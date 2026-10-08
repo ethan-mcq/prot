@@ -9,6 +9,11 @@ export type PromptVersion = {
 // retiredBuiltIns holds the hashes of deleted built-in versions so reconcile does not bring them back.
 export type PromptLibrary = { versions: PromptVersion[]; liveHash: string; retiredBuiltIns: string[] }
 
+// guide writes AI guides; chat opens every Ask prot conversation.
+export const PROMPT_KINDS = ['guide', 'chat'] as const
+export type PromptKind = (typeof PROMPT_KINDS)[number]
+export type PromptLibraries = Record<PromptKind, PromptLibrary>
+
 export const PROMPT_HASH = /^[0-9a-f]{12}$/
 export const PROMPT_NAME_MAX = 60
 export const PROMPT_TEXT_MAX = 100_000
@@ -95,4 +100,23 @@ export async function reconcile(lib: PromptLibrary, builtInText: string, now: st
 
 export function livePrompt(lib: PromptLibrary): PromptVersion {
   return mustFind(lib, lib.liveHash)
+}
+
+// A chat keeps the version it started with; once that version is deleted it falls back to the live one.
+export function versionOrLive(lib: PromptLibrary, hash: string | undefined): PromptVersion {
+  const version = hash === undefined ? undefined : findVersion(lib, hash)
+  return version ?? livePrompt(lib)
+}
+
+// A kind the stored file does not have yet is seeded; each kind reconciles against its own shipped text.
+export async function reconcileAll(
+  stored: Partial<PromptLibraries>,
+  builtIns: Record<PromptKind, string>,
+  now: string
+): Promise<PromptLibraries> {
+  const settle = (kind: PromptKind) => {
+    const lib = stored[kind]
+    return lib === undefined ? seedLibrary(builtIns[kind], now) : reconcile(lib, builtIns[kind], now)
+  }
+  return { guide: await settle('guide'), chat: await settle('chat') }
 }

@@ -19,7 +19,6 @@ export type ManifestEntry = {
   name: string
   contentType: string | null
   size: number | null
-  source: string
   status: StoredStatus
   file: string | null
 }
@@ -109,14 +108,13 @@ function parseEntry(raw: unknown): ManifestEntry | null {
   if (typeof raw !== 'object' || raw === null) return null
   const value = raw as Record<string, unknown>
   const status = (['ready', 'link-only', 'failed'] as const).find((candidate) => candidate === value.status)
-  if (typeof value.url !== 'string' || typeof value.name !== 'string' || typeof value.source !== 'string' || status === undefined) return null
+  if (typeof value.url !== 'string' || typeof value.name !== 'string' || status === undefined) return null
   const file = typeof value.file === 'string' && FILE_NAME.test(value.file) ? value.file : null
   return {
     url: value.url,
     name: value.name,
     contentType: typeof value.contentType === 'string' ? value.contentType : null,
     size: typeof value.size === 'number' ? value.size : null,
-    source: value.source,
     status: status === 'ready' && file === null ? 'failed' : status,
     file
   }
@@ -163,8 +161,8 @@ export class AttachmentService {
     for (const entry of entries) done.set(attachmentKey(entry.url), entry)
     return job.links.map((link) => {
       const entry = done.get(attachmentKey(link.url))
-      if (entry !== undefined) return this.toAttachment(name, { ...entry, name: link.name, source: link.source })
-      return { url: link.url, name: link.name, source: link.source, size: null, kind: 'file', status: 'importing', src: null }
+      if (entry !== undefined) return this.toAttachment(name, { ...entry, name: link.name })
+      return { url: link.url, name: link.name, size: null, kind: 'file', status: 'importing', src: null }
     })
   }
 
@@ -206,7 +204,7 @@ export class AttachmentService {
   private toAttachment(name: string, entry: ManifestEntry): Attachment {
     const kind = kindOf(entry.file)
     const src = entry.status === 'ready' && entry.file !== null && kind !== 'file' ? `${ATTACHMENT_SCHEME}://pr/${name}/${entry.file}` : null
-    return { url: entry.url, name: entry.name, source: entry.source, size: entry.size, kind, status: entry.status, src }
+    return { url: entry.url, name: entry.name, size: entry.size, kind, status: entry.status, src }
   }
 
   // Converges the PR's folder on the current links: ready and link-only entries are kept, failed ones retried, dropped ones deleted.
@@ -225,7 +223,7 @@ export class AttachmentService {
       const old = previous.get(attachmentKey(link.url))
       if (old === undefined || old.status === 'failed') continue
       if (old.status === 'ready' && !(await this.exists(dir, old.file))) continue
-      kept.set(link.url, { ...old, url: link.url, name: link.name, source: link.source })
+      kept.set(link.url, { ...old, url: link.url, name: link.name })
       if (old.status === 'ready') used += old.size ?? 0
     }
 
@@ -239,7 +237,6 @@ export class AttachmentService {
         entry = {
           url: link.url,
           name: link.name,
-          source: link.source,
           status: download.status,
           contentType: download.status === 'failed' ? null : download.contentType,
           size: download.status === 'failed' ? null : download.size,

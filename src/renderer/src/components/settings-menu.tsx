@@ -111,7 +111,7 @@ export function SettingsMenu({ onSignOut }: { onSignOut: () => void }) {
               setPromptOpen(true)
             }}
           >
-            <FileText /> Review prompt…
+            <FileText /> System prompts…
           </Button>
           <Button variant="ghost" size="sm" className="w-full justify-start text-muted-foreground" onClick={onSignOut}>
             <LogOut /> Sign out

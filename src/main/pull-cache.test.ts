@@ -24,10 +24,10 @@ function cacheFor(refs: PullRef[], attachmentRefs: PullRef[] = refs) {
     mkdirSync(join(attachments, name(ref)))
     writeFileSync(join(attachments, name(ref), 'manifest.json'), '[]')
   }
-  const prompts = new PromptStore(join(mkdtempSync(join(tmpdir(), 'prot-prompts-')), 'prompts.json'), 'You write guided code reviews.')
+  const prompts = new PromptStore(join(mkdtempSync(join(tmpdir(), 'prot-prompts-')), 'prompts.json'), { guide: 'You write guided code reviews.', chat: 'You answer review questions.' })
   const guide = new GuideService({} as SecretsStore, {} as SettingsStore, prompts, {} as PullService, {} as CodeIndexService, guides)
   const service = new AttachmentService(attachments, () => ({}), () => {})
-  const cache = new PullCache(guide, service, 'https://github.com')
+  const cache = new PullCache(guide, service)
   const left = () => ({ guides: readdirSync(guides).sort(), attachments: readdirSync(attachments).sort() })
   return { cache, guides, left }
 }
@@ -55,16 +55,16 @@ describe('PullCache lifecycle', () => {
   it('does not import attachments again for the head a finished review was submitted at, and does for a new head', async () => {
     const imported: string[] = []
     const attachments = { import: (_ref: PullRef, links: AttachmentLink[]) => imported.push(links.map((link) => link.url).join(',')) }
-    const prompts = new PromptStore(join(mkdtempSync(join(tmpdir(), 'prot-prompts-')), 'prompts.json'), 'x')
+    const prompts = new PromptStore(join(mkdtempSync(join(tmpdir(), 'prot-prompts-')), 'prompts.json'), { guide: 'x', chat: 'y' })
     const guide = new GuideService({} as SecretsStore, {} as SettingsStore, prompts, {} as PullService, {} as CodeIndexService, mkdtempSync(join(tmpdir(), 'prot-guides-')))
-    const cache = new PullCache(guide, { ...attachments, remove: async () => {} } as unknown as AttachmentService, 'https://github.com')
+    const cache = new PullCache(guide, { ...attachments, remove: async () => {} } as unknown as AttachmentService)
     const ref = capyStoryPull.summary.ref
-    const documents = [{ source: 'description', html: '<img src="https://github.com/user-attachments/assets/a1" alt="shot">', markdown: '' }]
+    const links = [{ url: 'https://github.com/user-attachments/assets/a1', name: 'shot' }]
     const at = (sha: string): PullDetail => ({ ...capyStoryPull, head: { ...capyStoryPull.head, sha } })
 
     await cache.reviewed(ref, { ...review('APPROVE'), commitId: 'head1' })
-    cache.fetched(ref, at('head1'), documents)
-    cache.fetched(ref, at('head2'), documents)
+    cache.fetched(ref, at('head1'), links)
+    cache.fetched(ref, at('head2'), links)
 
     expect(imported).toEqual(['https://github.com/user-attachments/assets/a1'])
   })

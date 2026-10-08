@@ -47,11 +47,11 @@ const api: ProtApi = {
     set: (patch) => ipcRenderer.invoke(IPC.settingsSet, patch)
   },
   prompts: {
-    get: () => ipcRenderer.invoke(IPC.promptsGet),
-    save: (text) => ipcRenderer.invoke(IPC.promptsSave, text),
-    rename: (hash, name) => ipcRenderer.invoke(IPC.promptsRename, hash, name),
-    setLive: (hash) => ipcRenderer.invoke(IPC.promptsSetLive, hash),
-    remove: (hash) => ipcRenderer.invoke(IPC.promptsRemove, hash)
+    get: (kind) => ipcRenderer.invoke(IPC.promptsGet, kind),
+    save: (kind, text) => ipcRenderer.invoke(IPC.promptsSave, kind, text),
+    rename: (kind, hash, name) => ipcRenderer.invoke(IPC.promptsRename, kind, hash, name),
+    setLive: (kind, hash) => ipcRenderer.invoke(IPC.promptsSetLive, kind, hash),
+    remove: (kind, hash) => ipcRenderer.invoke(IPC.promptsRemove, kind, hash)
   },
   keys: {
     get: () => ipcRenderer.invoke(IPC.keysGet),

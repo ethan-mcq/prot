@@ -19,6 +19,7 @@ import {
   parseAttachmentUrl,
   parseHttpsUrl,
   parsePromptHash,
+  parsePromptKind,
   parsePromptName,
   parsePromptText,
   parsePullRef,
@@ -103,13 +104,13 @@ export function registerIpc(services: Services): void {
     settings.set(parseSettingsPatch(patch))
   )
 
-  ipcMain.handle(IPC.promptsGet, () => prompts.get())
-  ipcMain.handle(IPC.promptsSave, (_event, text: unknown) => prompts.save(parsePromptText(text)))
-  ipcMain.handle(IPC.promptsRename, (_event, hash: unknown, name: unknown) =>
-    prompts.rename(parsePromptHash(hash), parsePromptName(name))
+  ipcMain.handle(IPC.promptsGet, (_event, kind: unknown) => prompts.get(parsePromptKind(kind)))
+  ipcMain.handle(IPC.promptsSave, (_event, kind: unknown, text: unknown) => prompts.save(parsePromptKind(kind), parsePromptText(text)))
+  ipcMain.handle(IPC.promptsRename, (_event, kind: unknown, hash: unknown, name: unknown) =>
+    prompts.rename(parsePromptKind(kind), parsePromptHash(hash), parsePromptName(name))
   )
-  ipcMain.handle(IPC.promptsSetLive, (_event, hash: unknown) => prompts.setLive(parsePromptHash(hash)))
-  ipcMain.handle(IPC.promptsRemove, (_event, hash: unknown) => prompts.remove(parsePromptHash(hash)))
+  ipcMain.handle(IPC.promptsSetLive, (_event, kind: unknown, hash: unknown) => prompts.setLive(parsePromptKind(kind), parsePromptHash(hash)))
+  ipcMain.handle(IPC.promptsRemove, (_event, kind: unknown, hash: unknown) => prompts.remove(parsePromptKind(kind), parsePromptHash(hash)))
 
   ipcMain.handle(IPC.keysGet, async () => ({ anthropic: await secrets.hasAnthropicKey() }))
   ipcMain.handle(IPC.keysSetAnthropic, async (_event, key: unknown) => {

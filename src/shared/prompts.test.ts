@@ -4,11 +4,13 @@ import {
   livePrompt,
   promptHash,
   reconcile,
+  reconcileAll,
   removeVersion,
   renameVersion,
   saveVersion,
   seedLibrary,
   setLive,
+  versionOrLive,
   type PromptLibrary
 } from './prompts'
 
@@ -153,5 +155,47 @@ describe('reconcile', () => {
 describe('promptHash', () => {
   it('hashes the normalised text to the first 12 hex characters of its sha256', async () => {
     expect([await promptHash('Review risk first.'), await promptHash('Review risk first. \n\n')]).toEqual(['e40065d9dff0', 'e40065d9dff0'])
+  })
+})
+
+describe('versionOrLive', () => {
+  it.each([
+    ['a kept version serves its own text', 'e40065d9dff0', 'Review risk first.'],
+    ['a deleted version falls back to the live text', 'aaaaaaaaaaaa', BUILT_IN],
+    ['no hash serves the live text', undefined, BUILT_IN]
+  ])('%s', async (_case, hash, text) => {
+    const { library } = await saveVersion(seeded, 'Review risk first.', LATER)
+    expect(versionOrLive(library, hash).text).toBe(text)
+  })
+})
+
+describe('reconcileAll', () => {
+  const CHAT = 'You answer review questions.'
+
+  it('seeds a kind the stored libraries do not have yet and keeps the one they do', async () => {
+    const custom = setLive((await saveVersion(seeded, 'Review risk first.', LATER)).library, 'e40065d9dff0')
+    const all = await reconcileAll({ guide: custom }, { guide: BUILT_IN, chat: CHAT }, LATER)
+    expect({ guideKept: all.guide === custom, chat: all.chat }).toEqual({
+      guideKept: true,
+      chat: {
+        versions: [{ hash: '18b4da50330c', name: 'built-in default', text: CHAT, createdAt: LATER, builtIn: true }],
+        liveHash: '18b4da50330c',
+        retiredBuiltIns: []
+      }
+    })
+  })
+
+  it('a changed shipped chat prompt adds a chat version and leaves the guide library untouched', async () => {
+    const first = await reconcileAll({}, { guide: BUILT_IN, chat: CHAT }, SEEDED)
+    const upgraded = await reconcileAll(first, { guide: BUILT_IN, chat: 'You answer review questions, briefly.' }, LATER)
+    expect({
+      guideKept: upgraded.guide === first.guide,
+      chatLive: upgraded.chat.liveHash,
+      chatHashes: upgraded.chat.versions.map((v) => `${v.hash} ${v.name ?? '-'}`)
+    }).toEqual({
+      guideKept: true,
+      chatLive: '18b4da50330c',
+      chatHashes: ['18b4da50330c built-in default', '16fa055c085a -']
+    })
   })
 })

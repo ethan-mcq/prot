@@ -78,8 +78,6 @@ export async function startGitHub(): Promise<GitHubFixture> {
       res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' })
       return res.end(pr.intentLog)
     }
-    if (p === `${prPath}/issues/${pr.pull.number}/comments` && req.method === 'GET') return json(res, 200, pr.issueComments(base, full))
-    if (/^\/repos\/[^/]+\/[^/]+\/issues\/\d+\/comments$/.test(p) && req.method === 'GET') return json(res, 200, [])
     if (p === '/user') return json(res, 200, pr.viewerUser)
     if (p === '/graphql' && req.method === 'POST') {
       const { query, variables } = body as { query: string; variables: Record<string, string | number> }
@@ -121,7 +119,7 @@ export async function startGitHub(): Promise<GitHubFixture> {
     }
     if (p === `${prPath}/pulls/${pr.pull.number}/reviews`) {
       if (req.method === 'POST') return json(res, 200, { id: 7002, state: 'APPROVED' })
-      return json(res, 200, pr.reviews)
+      return json(res, 200, pr.reviews(base))
     }
     if (p === `${prPath}/issues/${pr.pull.number}/comments` && req.method === 'POST') {
       return json(res, 201, { id: 5001 })

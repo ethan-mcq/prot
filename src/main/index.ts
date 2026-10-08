@@ -1,10 +1,10 @@
 import { join } from 'node:path'
 import { app, BrowserWindow, protocol } from 'electron'
 import { IPC } from '@shared/ipc'
-import { webOrigin } from './attachment-links'
 import { ATTACHMENT_SCHEME, AttachmentService, serveAttachment } from './attachments'
 import { AuthService } from './auth'
 import { ChatService } from './chat'
+import { CHAT_SYSTEM_PROMPT } from './chat-context'
 import { CheckedOutStore } from './checked-out'
 import { CodeIndexService } from './code-index/service'
 import { GitHubClient } from './github'
@@ -54,13 +54,13 @@ function boot(): void {
   const pulls = new PullService(
     auth,
     (ref) => poller.latestUpdatedAt(ref),
-    (ref, detail, documents) => cache.fetched(ref, detail, documents)
+    (ref, detail, links) => cache.fetched(ref, detail, links)
   )
   const code = new CodeIndexService(pulls)
-  const prompts = new PromptStore(join(userData, 'prompts.json'), SYSTEM_PROMPT)
+  const prompts = new PromptStore(join(userData, 'prompts.json'), { guide: SYSTEM_PROMPT, chat: CHAT_SYSTEM_PROMPT })
   const guide = new GuideService(secrets, settings, prompts, pulls, code, join(userData, 'guides'))
-  const cache = new PullCache(guide, attachments, webOrigin(githubApiUrl))
-  const chat = new ChatService(secrets, settings, pulls, broadcast)
+  const cache = new PullCache(guide, attachments)
+  const chat = new ChatService(secrets, settings, pulls, prompts, broadcast)
   protocol.handle(ATTACHMENT_SCHEME, (request) => serveAttachment(attachmentsRoot, request.url))
 
   poller.onClosed((pull) => {

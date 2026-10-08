@@ -1,7 +1,4 @@
-// One piece of PR text that can carry attachments. html is GitHub's body_html rendering, null when it was not sent.
-export type AttachmentDocument = { source: string; html: string | null; markdown: string }
-
-export type AttachmentLink = { url: string; name: string; source: string }
+export type AttachmentLink = { url: string; name: string }
 
 const SIGNED_HOSTS = new Set(['user-images.githubusercontent.com', 'private-user-images.githubusercontent.com', 'camo.githubusercontent.com'])
 const WEB_ATTACHMENT_PATHS = [/^\/user-attachments\/(assets|files)\//, /^\/[^/]+\/[^/]+\/(files|assets)\//]
@@ -83,27 +80,25 @@ function fallbackName(url: URL): string {
   }
 }
 
-// body_html carries the signed, fetchable URLs; the raw markdown is read only when no rendering came back.
-export function attachmentLinks(documents: AttachmentDocument[], web: string): AttachmentLink[] {
+// html is GitHub's body_html, whose image URLs are signed and fetchable; the raw markdown is read only when no rendering came back.
+export function attachmentLinks(html: string | null, markdown: string, web: string): AttachmentLink[] {
+  const found = html === null ? fromMarkdown(markdown) : fromHtml(html)
+  found.sort((a, b) => a.index - b.index)
   const links: AttachmentLink[] = []
   const seen = new Set<string>()
-  for (const document of documents) {
-    const found = document.html === null ? fromMarkdown(document.markdown) : fromHtml(document.html)
-    found.sort((a, b) => a.index - b.index)
-    for (const candidate of found) {
-      let url: URL
-      try {
-        url = new URL(candidate.url, web)
-      } catch {
-        continue
-      }
-      if (!isAttachmentUrl(url, web)) continue
-      const key = attachmentKey(url.href)
-      if (seen.has(key)) continue
-      seen.add(key)
-      const name = candidate.name.trim()
-      links.push({ url: url.href, name: name === '' ? fallbackName(url) : name, source: document.source })
+  for (const candidate of found) {
+    let url: URL
+    try {
+      url = new URL(candidate.url, web)
+    } catch {
+      continue
     }
+    if (!isAttachmentUrl(url, web)) continue
+    const key = attachmentKey(url.href)
+    if (seen.has(key)) continue
+    seen.add(key)
+    const name = candidate.name.trim()
+    links.push({ url: url.href, name: name === '' ? fallbackName(url) : name })
   }
   return links
 }
