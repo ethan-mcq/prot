@@ -174,7 +174,7 @@ describe('reconcileAll', () => {
 
   it('seeds a kind the stored libraries do not have yet and keeps the one they do', async () => {
     const custom = setLive((await saveVersion(seeded, 'Review risk first.', LATER)).library, 'e40065d9dff0')
-    const all = await reconcileAll({ guide: custom }, { guide: BUILT_IN, chat: CHAT }, LATER)
+    const all = await reconcileAll({ guide: custom }, { guide: BUILT_IN, chat: CHAT, agent: 'You run agents.' }, LATER)
     expect({ guideKept: all.guide === custom, chat: all.chat }).toEqual({
       guideKept: true,
       chat: {
@@ -186,8 +186,8 @@ describe('reconcileAll', () => {
   })
 
   it('a changed shipped chat prompt adds a chat version and leaves the guide library untouched', async () => {
-    const first = await reconcileAll({}, { guide: BUILT_IN, chat: CHAT }, SEEDED)
-    const upgraded = await reconcileAll(first, { guide: BUILT_IN, chat: 'You answer review questions, briefly.' }, LATER)
+    const first = await reconcileAll({}, { guide: BUILT_IN, chat: CHAT, agent: 'You run agents.' }, SEEDED)
+    const upgraded = await reconcileAll(first, { guide: BUILT_IN, chat: 'You answer review questions, briefly.', agent: 'You run agents.' }, LATER)
     expect({
       guideKept: upgraded.guide === first.guide,
       chatLive: upgraded.chat.liveHash,

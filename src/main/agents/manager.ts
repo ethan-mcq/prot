@@ -1,12 +1,13 @@
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { mkdir } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve, sep } from 'node:path'
 import { createInterface } from 'node:readline'
 import { BrowserWindow, dialog, Notification, shell } from 'electron'
 import {
+  type AgentInstructions,
   AGENT_PROVIDERS,
   PROVIDER_NAMES,
   type AgentChange,
@@ -71,6 +72,9 @@ import {
   type OutsideSession
 } from './sessions'
 import type { AgentStore, StoredAgent } from './store'
+import type { PromptStore } from '../prompt-store'
+import { displayName, findVersion, livePrompt, type PromptLibrary } from '@shared/prompts'
+import { findAgentsMd } from './instructions'
 
 const REFRESH_MS = 30_000
 const CLAUDE_USAGE_MS = 5 * 60 * 1000
@@ -101,7 +105,7 @@ export function worktreeRoot(): string {
 }
 
 function publicSummary(agent: StoredAgent): AgentSummary {
-  const { archived: _archived, forkedFrom: _forkedFrom, ...summary } = agent
+  const { archived: _archived, forkedFrom: _forkedFrom, promptHash: _promptHash, ...summary } = agent
   return summary
 }
 
@@ -139,6 +143,7 @@ export class AgentManager {
     private readonly store: AgentStore,
     private readonly auth: AuthService,
     private readonly settings: SettingsStore,
+    private readonly prompts: PromptStore,
     private readonly broadcast: (channel: string, payload: unknown) => void
   ) {
     let changed = false
@@ -230,11 +235,12 @@ export class AgentManager {
       changes: null,
       costUsd: null,
       archived: false,
-      forkedFrom: null
+      forkedFrom: null,
+      promptHash: null
     }
     this.store.add(agent)
     this.store.addRepo(repo)
-    this.emit(agent, [{ kind: 'user', id: randomUUID(), at: now, text: input.prompt }])
+    this.emit(agent, [await this.lockPrompt(agent, now), { kind: 'user', id: randomUUID(), at: now, text: input.prompt }])
     await this.runTurn(agent, input.prompt, 'first', agent.sessionId)
     return publicSummary(agent)
   }
@@ -646,6 +652,47 @@ export class AgentManager {
   // Turns
 
   // A turn that cannot start leaves the agent failed with the reason in its transcript.
+  // Locks the live agent prompt for the agent's turns and returns the transcript card that names it.
+  private async lockPrompt(agent: StoredAgent, at: string): Promise<AgentEvent> {
+    const live = livePrompt(await this.prompts.get('agent'))
+    agent.promptHash = live.hash
+    return { kind: 'system', id: randomUUID(), at, name: displayName(live), hash: live.hash, text: live.text }
+  }
+
+  private async systemPrompt(agent: StoredAgent): Promise<string | null> {
+    if (!agent.promptHash) return null
+    const library = await this.prompts.get('agent')
+    return (findVersion(library, agent.promptHash) ?? livePrompt(library)).text
+  }
+
+  async instructions(): Promise<AgentInstructions> {
+    const folder = this.settings.get().agentFolder
+    return { folder, file: folder ? await findAgentsMd(folder) : null }
+  }
+
+  async chooseInstructionsFolder(): Promise<AgentInstructions> {
+    const picked = await dialog.showOpenDialog({ title: 'Folder with your skills and AGENTS.md', properties: ['openDirectory'] })
+    if (!picked.canceled && picked.filePaths[0]) await this.settings.set({ agentFolder: picked.filePaths[0] })
+    return this.instructions()
+  }
+
+  // Writes the live agent prompt as the folder's AGENTS.md when it has none.
+  async createAgentsMd(): Promise<AgentInstructions> {
+    const current = await this.instructions()
+    if (!current.folder) throw new Error('Choose a folder first')
+    if (current.file) throw new Error(`${current.file} already exists`)
+    await writeFile(join(current.folder, 'AGENTS.md'), `${livePrompt(await this.prompts.get('agent')).text}\n`, { flag: 'wx' })
+    return this.instructions()
+  }
+
+  async importAgentsMd(): Promise<PromptLibrary> {
+    const { file } = await this.instructions()
+    if (!file) throw new Error('The folder has no AGENTS.md')
+    const { library, version } = await this.prompts.save('agent', await readFile(file, 'utf8'))
+    void library
+    return this.prompts.setLive('agent', version.hash)
+  }
+
   private async runTurn(agent: StoredAgent, prompt: string, mode: TurnMode, sessionId: string | null): Promise<void> {
     try {
       await this.spawnTurn(agent, prompt, mode, sessionId)
@@ -661,6 +708,7 @@ export class AgentManager {
   private async spawnTurn(agent: StoredAgent, prompt: string, mode: TurnMode, sessionId: string | null): Promise<void> {
     const info = await this.providerInfo(agent.provider)
     if (!info.binary) throw new Error(`${PROVIDER_NAMES[agent.provider]} is not installed`)
+    const agentFolder = this.settings.get().agentFolder
     const args = turnArgs(agent.provider, {
       mode,
       prompt,
@@ -668,7 +716,9 @@ export class AgentManager {
       effort: agent.effort ?? info.defaultEffort,
       permission: agent.permission ?? info.defaultPermission,
       cwd: agent.cwd,
-      sessionId
+      sessionId,
+      systemPrompt: await this.systemPrompt(agent),
+      addDirs: agent.provider === 'claude' && agentFolder && existsSync(agentFolder) ? [agentFolder] : []
     })
     const env = await childEnv()
     const child = spawn(info.binary, args, { cwd: agent.cwd, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true })
@@ -827,13 +877,14 @@ export class AgentManager {
       changes: source.changes,
       costUsd: null,
       archived: false,
-      forkedFrom: source.sessionId
+      forkedFrom: source.sessionId,
+      promptHash: null
     }
     const read = source.provider === 'claude' ? readClaudeTranscript : readCodexTranscript
     const history = await read(outside.file).catch(() => [] as AgentEvent[])
     this.store.add(agent)
     await this.store.appendEvents(agent.id, history)
-    this.emit(agent, [{ kind: 'user', id: randomUUID(), at: now, text: prompt }])
+    this.emit(agent, [await this.lockPrompt(agent, now), { kind: 'user', id: randomUUID(), at: now, text: prompt }])
     await this.runTurn(agent, prompt, 'fork', source.sessionId)
     return publicSummary(agent)
   }

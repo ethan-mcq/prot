@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { FileText, Loader2, Pencil, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
+import type { AgentInstructions } from '@shared/agents'
 import {
   displayName,
   findVersion,
@@ -21,8 +22,16 @@ import { relativeTime } from '@/lib/paths'
 import { usePrefs } from '@/lib/prefs'
 import { cn, errorMessage } from '@/lib/utils'
 
-export function PromptDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
-  return <Dialog open={open} onOpenChange={onOpenChange}>{open && <PromptEditor onClose={() => onOpenChange(false)} />}</Dialog>
+export function PromptDialog({
+  open,
+  onOpenChange,
+  initialKind = 'guide'
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  initialKind?: PromptKind
+}) {
+  return <Dialog open={open} onOpenChange={onOpenChange}>{open && <PromptEditor initialKind={initialKind} onClose={() => onOpenChange(false)} />}</Dialog>
 }
 
 function useHash(text: string): string | null {
@@ -49,12 +58,18 @@ const KINDS: Record<PromptKind, { tab: string; detail: string; placeholder: stri
     detail: 'sent at the start of each new chat',
     placeholder: 'Write the system prompt for Ask prot chats',
     deleteNote: 'Chats started with it switch to the live prompt.'
+  },
+  agent: {
+    tab: 'Agents',
+    detail: 'sent to every new agent, with your skills folder',
+    placeholder: 'Write the system prompt for Agent dash agents',
+    deleteNote: 'Agents started with it switch to the live prompt.'
   }
 }
 
-function PromptEditor({ onClose }: { onClose: () => void }) {
+function PromptEditor({ initialKind, onClose }: { initialKind: PromptKind; onClose: () => void }) {
   const { prompts: libraries, setPrompts } = usePrefs()
-  const [kind, setKind] = useState<PromptKind>('guide')
+  const [kind, setKind] = useState<PromptKind>(initialKind)
   const prompts = libraries[kind]
   const [selectedHash, setSelectedHash] = useState(prompts.liveHash)
   const selected = findVersion(prompts, selectedHash) ?? livePrompt(prompts)
@@ -254,6 +269,7 @@ function PromptEditor({ onClose }: { onClose: () => void }) {
         </TabsList>
         {PROMPT_KINDS.map((option) => (
           <TabsContent key={option} value={option} className="flex min-h-0 flex-col">
+            {option === 'agent' && <InstructionsBar onImported={(library) => setPrompts('agent', library)} />}
             {body}
           </TabsContent>
         ))}
@@ -408,5 +424,51 @@ function ConfirmDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+function InstructionsBar({ onImported }: { onImported: (library: PromptLibrary) => void }) {
+  const [info, setInfo] = useState<AgentInstructions | null>(null)
+
+  useEffect(() => {
+    void window.prot.agents.instructions().then(setInfo)
+  }, [])
+
+  function run(action: () => Promise<AgentInstructions>, failure: string) {
+    action().then(setInfo, (error: unknown) => toast.error(failure, { description: errorMessage(error) }))
+  }
+
+  function importFile() {
+    window.prot.agents.importAgentsMd().then(onImported, (error: unknown) =>
+      toast.error('Could not import AGENTS.md', { description: errorMessage(error) })
+    )
+  }
+
+  return (
+    <div aria-label="Skills folder" role="group" className="flex h-10 shrink-0 items-center gap-2 border-b border-pane-border px-3 font-mono text-[11.5px] text-muted-foreground">
+      <span className="shrink-0">folder</span>
+      <span className="min-w-0 truncate text-foreground" title={info?.folder ?? undefined}>
+        {info?.folder ?? 'none'}
+      </span>
+      {info?.folder && (
+        <span className="min-w-0 truncate" title={info.file ?? undefined}>
+          · {info.file ? info.file.slice(info.folder.length + 1) : 'no AGENTS.md'}
+        </span>
+      )}
+      <span className="flex-1" />
+      <Button size="xs" variant="outline" onClick={() => run(() => window.prot.agents.chooseInstructionsFolder(), 'Could not set the folder')}>
+        {info?.folder ? 'Change folder…' : 'Choose folder…'}
+      </Button>
+      {info?.file && (
+        <Button size="xs" variant="outline" onClick={importFile}>
+          Import AGENTS.md
+        </Button>
+      )}
+      {info?.folder && !info.file && (
+        <Button size="xs" variant="outline" onClick={() => run(() => window.prot.agents.createAgentsMd(), 'Could not create AGENTS.md')}>
+          Create AGENTS.md
+        </Button>
+      )}
+    </div>
   )
 }

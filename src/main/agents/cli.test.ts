@@ -29,6 +29,8 @@ const spec = (extra: Partial<TurnSpec>): TurnSpec => ({
   permission: 'auto',
   cwd: '/tmp/repo',
   sessionId: '11111111-1111-4111-8111-111111111111',
+  systemPrompt: null,
+  addDirs: [],
   ...extra
 })
 
@@ -154,5 +156,15 @@ describe('parseClaudeUsageText', () => {
       { label: '7 day', usedPercent: 66, resetsAt: new Date(2026, 9, 12, 6, 59).getTime() / 1000 },
       { label: '7 day Fable', usedPercent: 24, resetsAt: new Date(2027, 0, 2).getTime() / 1000 }
     ])
+  })
+})
+
+describe('agent system prompt', () => {
+  it('appends it for Claude with the instructions repo as an extra dir, and passes it to Codex as developer_instructions', () => {
+    const text = 'Use "the" skills.\nBe brief.'
+    const claude = claudeArgs(spec({ systemPrompt: text, addDirs: ['/Users/me/skills'] }))
+    expect(claude.slice(claude.indexOf('--append-system-prompt'), claude.indexOf('--'))).toEqual(['--append-system-prompt', text, '--add-dir', '/Users/me/skills'])
+    const codex = codexArgs(spec({ systemPrompt: text, model: 'gpt-6-astra', sessionId: null }))
+    expect(codex.slice(-4)).toEqual(['-c', 'developer_instructions="Use \\"the\\" skills.\\nBe brief."', '--', '-fix the bug'])
   })
 })

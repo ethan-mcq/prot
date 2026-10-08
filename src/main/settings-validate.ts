@@ -20,7 +20,8 @@ const FIELDS: FieldParsers = {
   outputStyle: (value) => OUTPUT_STYLES.find((style) => style === value),
   notify: (value) => (typeof value === 'boolean' ? value : undefined),
   autoAiGuide: (value) => (typeof value === 'boolean' ? value : undefined),
-  autoRefreshStaleGuides: (value) => (typeof value === 'boolean' ? value : undefined)
+  autoRefreshStaleGuides: (value) => (typeof value === 'boolean' ? value : undefined),
+  agentFolder: (value) => (value === null || (typeof value === 'string' && value.startsWith('/')) ? value : undefined)
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -43,6 +44,8 @@ export function parseSettingsPatch(raw: unknown): Partial<Settings> {
   const patch: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(raw)) {
     if (!Object.hasOwn(FIELDS, key)) throw new Error(`Unknown setting: ${key}`)
+    // Only the folder picker in the main process sets it.
+    if (key === 'agentFolder') throw new Error('agentFolder is set with the folder picker')
     const parsed = FIELDS[key as keyof Settings](value)
     if (parsed === undefined) throw new Error(`Invalid value for setting ${key}`)
     patch[key] = parsed

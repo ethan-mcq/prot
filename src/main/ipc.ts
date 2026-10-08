@@ -137,6 +137,10 @@ export function registerIpc(services: Services): void {
   ipcMain.handle(IPC.agentsChanges, (_event, id: unknown) => agents.changes(parseAgentId(id)))
   ipcMain.handle(IPC.agentsDiff, (_event, id: unknown, path: unknown) => agents.diff(parseAgentId(id), parseAgentDiffPath(path)))
   ipcMain.handle(IPC.agentsAddRepo, () => agents.addRepo())
+  ipcMain.handle(IPC.agentsInstructions, () => agents.instructions())
+  ipcMain.handle(IPC.agentsChooseInstructions, () => agents.chooseInstructionsFolder())
+  ipcMain.handle(IPC.agentsCreateAgentsMd, () => agents.createAgentsMd())
+  ipcMain.handle(IPC.agentsImportAgentsMd, () => agents.importAgentsMd())
   ipcMain.handle(IPC.agentsOpen, (_event, id: unknown, target: unknown) => agents.open(parseAgentId(id), parseAgentOpenTarget(target)))
 
   ipcMain.handle(IPC.openExternal, (_event, url: unknown) => shell.openExternal(parseHttpsUrl(url)))

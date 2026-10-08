@@ -24,7 +24,7 @@ function cacheFor(refs: PullRef[], attachmentRefs: PullRef[] = refs) {
     mkdirSync(join(attachments, name(ref)))
     writeFileSync(join(attachments, name(ref), 'manifest.json'), '[]')
   }
-  const prompts = new PromptStore(join(mkdtempSync(join(tmpdir(), 'prot-prompts-')), 'prompts.json'), { guide: 'You write guided code reviews.', chat: 'You answer review questions.' })
+  const prompts = new PromptStore(join(mkdtempSync(join(tmpdir(), 'prot-prompts-')), 'prompts.json'), { guide: 'You write guided code reviews.', chat: 'You answer review questions.', agent: 'You run agents.' })
   const guide = new GuideService({} as SecretsStore, {} as SettingsStore, prompts, {} as PullService, {} as CodeIndexService, guides)
   const service = new AttachmentService(attachments, () => ({}), () => {})
   const cache = new PullCache(guide, service)
@@ -55,7 +55,7 @@ describe('PullCache lifecycle', () => {
   it('does not import attachments again for the head a finished review was submitted at, and does for a new head', async () => {
     const imported: string[] = []
     const attachments = { import: (_ref: PullRef, links: AttachmentLink[]) => imported.push(links.map((link) => link.url).join(',')) }
-    const prompts = new PromptStore(join(mkdtempSync(join(tmpdir(), 'prot-prompts-')), 'prompts.json'), { guide: 'x', chat: 'y' })
+    const prompts = new PromptStore(join(mkdtempSync(join(tmpdir(), 'prot-prompts-')), 'prompts.json'), { guide: 'x', chat: 'y', agent: 'z' })
     const guide = new GuideService({} as SecretsStore, {} as SettingsStore, prompts, {} as PullService, {} as CodeIndexService, mkdtempSync(join(tmpdir(), 'prot-guides-')))
     const cache = new PullCache(guide, { ...attachments, remove: async () => {} } as unknown as AttachmentService)
     const ref = capyStoryPull.summary.ref

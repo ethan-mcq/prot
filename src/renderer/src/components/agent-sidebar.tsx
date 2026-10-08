@@ -1,5 +1,5 @@
-import { useMemo } from 'react'
-import { Bot, ListFilter, Plus, RefreshCw } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Bot, FileText, ListFilter, Plus, RefreshCw } from 'lucide-react'
 import type { AgentProvider, AgentsState, AgentSummary, ProviderInfo } from '@shared/agents'
 import { AGENT_PROVIDERS, PROVIDER_NAMES } from '@shared/agents'
 import { Button } from '@/components/ui/button'
@@ -10,6 +10,7 @@ import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
 import { DiffStat } from '@/components/diff-stat'
 import { Frame, PaneButton, PaneHeader } from '@/components/pane'
+import { PromptDialog } from '@/components/prompt-dialog'
 import { PrBadge, ProviderMark, StatusDot, UnreadDot } from '@/components/agent-bits'
 import { AGENT_SECTIONS, effortLabel, modelLabel, sectionAgents, useHiddenProviders } from '@/lib/agents'
 import { useCollapsed } from '@/lib/inbox-prefs'
@@ -117,6 +118,7 @@ export function AgentSidebar({
           )
         })}
       </div>
+      <AgentPromptBar />
     </aside>
   )
 }
@@ -217,5 +219,18 @@ function AgentFilter({ hidden, onChange }: { hidden: AgentProvider[]; onChange: 
         </Button>
       </PopoverContent>
     </Popover>
+  )
+}
+
+function AgentPromptBar() {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="flex h-11 shrink-0 items-center gap-2 border-t border-pane-border pr-2 pl-3">
+      <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-muted-foreground">agent prompt</span>
+      <PaneButton aria-label="Agent system prompt" title="Agent system prompt and skills folder" onClick={() => setOpen(true)}>
+        <FileText />
+      </PaneButton>
+      <PromptDialog open={open} onOpenChange={setOpen} initialKind="agent" />
+    </div>
   )
 }

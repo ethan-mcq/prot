@@ -28,7 +28,7 @@ describe('GuideService cache', () => {
     } as unknown as SecretsStore
     const pulls = { cached: async () => capyStoryPull } as unknown as PullService
     const code = { index: async () => ({ index: capyStoryIndex, heads: {} }) } as unknown as CodeIndexService
-    const prompts = new PromptStore(join(dir, 'prompts', 'prompts.json'), { guide: 'You write guided code reviews.', chat: 'You answer review questions.' })
+    const prompts = new PromptStore(join(dir, 'prompts', 'prompts.json'), { guide: 'You write guided code reviews.', chat: 'You answer review questions.', agent: 'You run agents.' })
     await prompts.setLive('guide', (await prompts.save('guide', 'Review risk first.')).version.hash)
     const service = new GuideService(secrets, {} as SettingsStore, prompts, pulls, code, dir)
 
@@ -57,7 +57,7 @@ function cacheName(ref: PullRef): string {
 
 function serviceFor(dir: string, pulls: Partial<PullService> = {}): GuideService {
   const code = { index: async () => ({ index: capyStoryIndex, heads: {} }) } as unknown as CodeIndexService
-  const prompts = new PromptStore(join(mkdtempSync(join(tmpdir(), 'prot-prompts-')), 'prompts.json'), { guide: 'You write guided code reviews.', chat: 'You answer review questions.' })
+  const prompts = new PromptStore(join(mkdtempSync(join(tmpdir(), 'prot-prompts-')), 'prompts.json'), { guide: 'You write guided code reviews.', chat: 'You answer review questions.', agent: 'You run agents.' })
   return new GuideService({} as SecretsStore, {} as SettingsStore, prompts, pulls as PullService, code, dir)
 }
 

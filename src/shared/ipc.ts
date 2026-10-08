@@ -17,6 +17,7 @@ import type {
   AgentChange,
   AgentDetail,
   AgentFileChange,
+  AgentInstructions,
   AgentOpenTarget,
   AgentRepo,
   AgentStartInput,
@@ -97,6 +98,11 @@ export interface ProtApi {
     // Opens a folder picker and adds the chosen git repo; null when cancelled.
     addRepo(): Promise<AgentRepo | null>
     open(id: string, target: AgentOpenTarget): Promise<void>
+    instructions(): Promise<AgentInstructions>
+    chooseInstructionsFolder(): Promise<AgentInstructions>
+    createAgentsMd(): Promise<AgentInstructions>
+    // Saves the folder's AGENTS.md as a new agent prompt version and makes it live.
+    importAgentsMd(): Promise<PromptLibrary>
     onChange(cb: (change: AgentChange) => void): () => void
     onUsage(cb: (change: AgentUsageChange) => void): () => void
   }
@@ -151,6 +157,10 @@ export const IPC = {
   agentsAddRepo: 'agents:add-repo',
   agentsOpen: 'agents:open',
   agentsChanged: 'agents:changed',
+  agentsInstructions: 'agents:instructions',
+  agentsChooseInstructions: 'agents:choose-instructions',
+  agentsCreateAgentsMd: 'agents:create-agents-md',
+  agentsImportAgentsMd: 'agents:import-agents-md',
   agentsUsage: 'agents:usage',
   openExternal: 'open-external',
   copyLink: 'copy-link'

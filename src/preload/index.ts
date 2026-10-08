@@ -72,6 +72,10 @@ const api: ProtApi = {
     diff: (id, path) => ipcRenderer.invoke(IPC.agentsDiff, id, path),
     addRepo: () => ipcRenderer.invoke(IPC.agentsAddRepo),
     open: (id, target) => ipcRenderer.invoke(IPC.agentsOpen, id, target),
+    instructions: () => ipcRenderer.invoke(IPC.agentsInstructions),
+    chooseInstructionsFolder: () => ipcRenderer.invoke(IPC.agentsChooseInstructions),
+    createAgentsMd: () => ipcRenderer.invoke(IPC.agentsCreateAgentsMd),
+    importAgentsMd: () => ipcRenderer.invoke(IPC.agentsImportAgentsMd),
     onChange: (cb) => subscribe<AgentChange>(IPC.agentsChanged, cb),
     onUsage: (cb) => subscribe<AgentUsageChange>(IPC.agentsUsage, cb)
   },

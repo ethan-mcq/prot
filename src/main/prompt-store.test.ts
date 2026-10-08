@@ -7,7 +7,7 @@ import { PromptStore } from './prompt-store'
 
 const SHIPPED = 'You write guided code reviews.'
 const CHAT = 'You answer review questions.'
-const BUILT_INS = { guide: SHIPPED, chat: CHAT }
+const BUILT_INS = { guide: SHIPPED, chat: CHAT, agent: 'You run agents.' }
 
 function summary(lib: PromptLibrary) {
   return {
@@ -47,7 +47,7 @@ describe('PromptStore', () => {
     const { version } = await first.save('guide', 'Review risk first.')
     await first.setLive('guide', version.hash)
 
-    const upgraded = await new PromptStore(file, { guide: 'You write guided code reviews, risk first.', chat: CHAT }).get('guide')
+    const upgraded = await new PromptStore(file, { guide: 'You write guided code reviews, risk first.', chat: CHAT, agent: 'You run agents.' }).get('guide')
     expect(summary(upgraded)).toEqual({
       liveHash: 'e40065d9dff0',
       versions: ['d1a090fa9228 built-in default built-in', 'e40065d9dff0 - saved', 'e6945cfbcd0b - built-in']

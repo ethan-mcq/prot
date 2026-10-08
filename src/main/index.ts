@@ -7,6 +7,7 @@ import { ATTACHMENT_SCHEME, AttachmentService, serveAttachment } from './attachm
 import { AuthService } from './auth'
 import { ChatService } from './chat'
 import { CHAT_SYSTEM_PROMPT } from './chat-context'
+import { AGENT_SYSTEM_PROMPT } from '@shared/output-style'
 import { CheckedOutStore } from './checked-out'
 import { CodeIndexService } from './code-index/service'
 import { GitHubClient } from './github'
@@ -59,11 +60,11 @@ function boot(): void {
     (ref, detail, links) => cache.fetched(ref, detail, links)
   )
   const code = new CodeIndexService(pulls)
-  const prompts = new PromptStore(join(userData, 'prompts.json'), { guide: SYSTEM_PROMPT, chat: CHAT_SYSTEM_PROMPT })
+  const prompts = new PromptStore(join(userData, 'prompts.json'), { guide: SYSTEM_PROMPT, chat: CHAT_SYSTEM_PROMPT, agent: AGENT_SYSTEM_PROMPT })
   const guide = new GuideService(secrets, settings, prompts, pulls, code, join(userData, 'guides'))
   const cache = new PullCache(guide, attachments)
   const chat = new ChatService(secrets, settings, pulls, prompts, broadcast)
-  const agents = new AgentManager(new AgentStore(userData), auth, settings, broadcast)
+  const agents = new AgentManager(new AgentStore(userData), auth, settings, prompts, broadcast)
   agents.boot()
   app.on('before-quit', () => agents.shutdown())
   protocol.handle(ATTACHMENT_SCHEME, (request) => serveAttachment(attachmentsRoot, request.url))

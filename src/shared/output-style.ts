@@ -15,3 +15,6 @@ export function withOutputStyle(system: string, style: OutputStyle): string {
   const text = STYLE_TEXT[style]
   return text === null ? system : `${system}\n\n${text}`
 }
+
+// The built-in agent system prompt: the concise style, until the user writes their own or imports an AGENTS.md.
+export const AGENT_SYSTEM_PROMPT = STYLE_TEXT.concise ?? ''

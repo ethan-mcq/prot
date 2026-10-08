@@ -8,6 +8,8 @@ export type StoredAgent = AgentSummary & {
   archived: boolean
   // The outside session this agent was forked from, if any.
   forkedFrom: string | null
+  // The agent system prompt version locked for this agent's turns.
+  promptHash: string | null
 }
 
 type StoreFile = {
@@ -62,7 +64,8 @@ function parseAgent(raw: unknown): StoredAgent | null {
     changes: value.changes ?? null,
     costUsd: value.costUsd ?? null,
     archived: value.archived === true,
-    forkedFrom: value.forkedFrom ?? null
+    forkedFrom: value.forkedFrom ?? null,
+    promptHash: typeof value.promptHash === 'string' ? value.promptHash : null
   }
 }
 

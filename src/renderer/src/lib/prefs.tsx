@@ -37,8 +37,8 @@ export function PrefsProvider({ children }: { children: ReactNode }) {
   const systemDark = useSystemDark()
 
   useEffect(() => {
-    Promise.all([window.prot.settings.get(), window.prot.keys.get(), window.prot.prompts.get('guide'), window.prot.prompts.get('chat')]).then(
-      ([settings, keys, guide, chat]) => setLoaded({ settings, keys, prompts: { guide, chat } })
+    Promise.all([window.prot.settings.get(), window.prot.keys.get(), window.prot.prompts.get('guide'), window.prot.prompts.get('chat'), window.prot.prompts.get('agent')]).then(
+      ([settings, keys, guide, chat, agent]) => setLoaded({ settings, keys, prompts: { guide, chat, agent } })
     )
   }, [])
 

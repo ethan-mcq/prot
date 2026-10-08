@@ -85,6 +85,8 @@ export type AgentSummary = {
 }
 
 export type AgentEvent =
+  // The agent system prompt version sent with the agent's turns.
+  | { kind: 'system'; id: string; at: string; name: string; hash: string; text: string }
   | { kind: 'user'; id: string; at: string; text: string }
   | { kind: 'assistant'; id: string; at: string; text: string }
   | { kind: 'thinking'; id: string; at: string; text: string }
@@ -121,6 +123,9 @@ export type AgentStartInput = {
   // True runs the agent in a new git worktree on a new branch; false runs it in the repo checkout itself.
   worktree: boolean
 }
+
+// The folder holding the user's skills and AGENTS.md; file is its topmost AGENTS.md.
+export type AgentInstructions = { folder: string | null; file: string | null }
 
 export type AgentRepo = { path: string; name: string; branch: string | null }
 

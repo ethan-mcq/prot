@@ -9,8 +9,8 @@ export type PromptVersion = {
 // retiredBuiltIns holds the hashes of deleted built-in versions so reconcile does not bring them back.
 export type PromptLibrary = { versions: PromptVersion[]; liveHash: string; retiredBuiltIns: string[] }
 
-// guide writes AI guides; chat opens every Ask prot conversation.
-export const PROMPT_KINDS = ['guide', 'chat'] as const
+// guide writes AI guides; chat opens every Ask prot conversation; agent starts every Agent dash agent.
+export const PROMPT_KINDS = ['guide', 'chat', 'agent'] as const
 export type PromptKind = (typeof PROMPT_KINDS)[number]
 export type PromptLibraries = Record<PromptKind, PromptLibrary>
 
@@ -118,5 +118,5 @@ export async function reconcileAll(
     const lib = stored[kind]
     return lib === undefined ? seedLibrary(builtIns[kind], now) : reconcile(lib, builtIns[kind], now)
   }
-  return { guide: await settle('guide'), chat: await settle('chat') }
+  return { guide: await settle('guide'), chat: await settle('chat'), agent: await settle('agent') }
 }

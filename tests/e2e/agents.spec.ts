@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpath
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { expect, test } from '@playwright/test'
+import { AGENT_SYSTEM_PROMPT } from '../../src/shared/output-style'
 import { launch, type Harness } from './launch'
 
 const SHOTS = process.env.PROT_SHOTS
@@ -164,9 +165,16 @@ test('a Claude agent in a new worktree runs with the chosen model, effort and pe
     'plan',
     '--session-id',
     sessionId,
+    '--append-system-prompt',
+    AGENT_SYSTEM_PROMPT,
     '--',
     prompt
   ])
+  // The locked agent prompt shows as one collapsed card above the first message.
+  const system = transcript().getByRole('button', { name: /^System prompt / })
+  await expect(system).toHaveAttribute('aria-expanded', 'false')
+  await system.click()
+  await expect(transcript()).toContainText(AGENT_SYSTEM_PROMPT.split('\n')[0] ?? '')
   const cwd = first?.cwd ?? ''
   const slug = basename(cwd)
   expect(slug).toMatch(/^fix-the-flaky-login-test-[0-9a-f]{4}$/)
@@ -212,6 +220,8 @@ test('a Claude agent in a new worktree runs with the chosen model, effort and pe
     'plan',
     '--resume',
     sessionId,
+    '--append-system-prompt',
+    AGENT_SYSTEM_PROMPT,
     '--',
     'Now add a regression test'
   ])
@@ -264,7 +274,7 @@ test('a Codex agent on the local checkout gets its options before `--` and resum
   await expect(page.getByRole('complementary', { name: 'Activity' }).getByRole('button', { name: /echo hi/ })).toBeVisible()
   await expect(header()).toContainText('widget · main')
 
-  const options = ['exec', '--json', '-m', 'gpt-6-astra', '-c', 'model_reasoning_effort="xhigh"', '-s', 'workspace-write', '-C', repo, '--skip-git-repo-check']
+  const options = ['exec', '--json', '-m', 'gpt-6-astra', '-c', 'model_reasoning_effort="xhigh"', '-s', 'workspace-write', '-C', repo, '--skip-git-repo-check', '-c', `developer_instructions=${JSON.stringify(AGENT_SYSTEM_PROMPT)}`]
   const [first] = turns('codex')
   expect(first).toEqual({ bin: 'codex', argv: [...options, '--', prompt], cwd: repo })
 
@@ -380,6 +390,8 @@ test('sending to a Claude app session forks it into a new prot agent that keeps 
       '--resume',
       OUTSIDE_CLAUDE,
       '--fork-session',
+      '--append-system-prompt',
+      AGENT_SYSTEM_PROMPT,
       '--',
       'Carry on with the tests'
     ],

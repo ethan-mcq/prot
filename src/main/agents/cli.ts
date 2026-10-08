@@ -315,6 +315,9 @@ export type TurnSpec = {
   cwd: string
   // Claude: the new session id on a first turn, else the session to resume or fork. Codex: the thread to resume or fork.
   sessionId: string | null
+  systemPrompt: string | null
+  // Extra directories Claude reads skills and instructions from.
+  addDirs: string[]
 }
 
 export function claudeArgs(spec: TurnSpec): string[] {
@@ -323,6 +326,8 @@ export function claudeArgs(spec: TurnSpec): string[] {
   if (spec.mode === 'first') args.push('--session-id', spec.sessionId)
   else args.push('--resume', spec.sessionId)
   if (spec.mode === 'fork') args.push('--fork-session')
+  if (spec.systemPrompt) args.push('--append-system-prompt', spec.systemPrompt)
+  for (const dir of spec.addDirs) args.push('--add-dir', dir)
   // `--` keeps a prompt that starts with `-` from being read as an option.
   args.push('--', spec.prompt)
   return args
@@ -350,6 +355,8 @@ export function codexArgs(spec: TurnSpec): string[] {
     spec.cwd,
     '--skip-git-repo-check'
   ]
+  // A JSON string is a valid TOML basic string.
+  if (spec.systemPrompt) args.push('-c', `developer_instructions=${JSON.stringify(spec.systemPrompt)}`)
   if (spec.mode !== 'first') {
     if (!spec.sessionId) throw new Error('A Codex follow-up needs a thread id')
     args.push(spec.mode === 'fork' ? 'fork' : 'resume', spec.sessionId)

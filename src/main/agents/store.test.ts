@@ -31,7 +31,8 @@ const agent: StoredAgent = {
   changes: null,
   costUsd: null,
   archived: false,
-  forkedFrom: null
+  forkedFrom: null,
+  promptHash: null
 }
 
 describe('AgentStore', () => {

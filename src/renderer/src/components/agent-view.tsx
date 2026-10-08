@@ -344,6 +344,8 @@ function Transcript({
 
 function TranscriptEvent({ event }: { event: AgentEvent }) {
   switch (event.kind) {
+    case 'system':
+      return <SystemCard event={event} />
     case 'user':
       return (
         <div className="flex justify-end">
@@ -395,6 +397,29 @@ function RunRow({ tools, active, onOpen }: { tools: ToolEvent[]; active: boolean
       {label}
       <ChevronRight aria-hidden className="size-3" />
     </button>
+  )
+}
+
+function SystemCard({ event }: { event: Extract<AgentEvent, { kind: 'system' }> }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="rounded-[6px] border border-dashed border-frame">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-label={`System prompt ${event.name}`}
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center gap-1.5 px-2 py-1 text-left font-mono text-[11px] text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+      >
+        <ChevronRight aria-hidden className={cn('size-3 transition-transform', open && 'rotate-90')} />
+        system prompt · <span className="text-foreground">{event.name}</span>
+      </button>
+      {open && (
+        <pre className="scroll-quiet max-h-80 overflow-auto border-t border-dashed border-frame px-2.5 py-2 font-mono text-[11.5px] leading-[1.55] whitespace-pre-wrap text-muted-foreground [overflow-wrap:anywhere]">
+          {event.text}
+        </pre>
+      )}
+    </div>
   )
 }
 

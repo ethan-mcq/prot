@@ -278,6 +278,8 @@ export type Settings = {
   notify: boolean
   autoAiGuide: boolean
   autoRefreshStaleGuides: boolean
+  // Folder with the skills and AGENTS.md every agent gets.
+  agentFolder: string | null
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -288,7 +290,8 @@ export const DEFAULT_SETTINGS: Settings = {
   outputStyle: 'concise',
   notify: true,
   autoAiGuide: true,
-  autoRefreshStaleGuides: false
+  autoRefreshStaleGuides: false,
+  agentFolder: null
 }
 
 export type KeysState = { anthropic: boolean }
