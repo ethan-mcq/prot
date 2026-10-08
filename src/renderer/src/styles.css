@@ -167,6 +167,8 @@
   body,
   #root {
     height: 100%;
+    /* clip, unlike hidden, cannot be scrolled by scrollIntoView, so the title bar never slides under the traffic lights. */
+    overflow: clip;
   }
   html {
     background: var(--wallpaper);

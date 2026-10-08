@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentEvent, AgentsState, AgentSummary, ProviderInfo } from '@shared/agents'
 import {
+  groupTranscript,
+  runLabel,
+  type ToolEvent,
   agentSection,
   chooseModel,
   formatCost,
@@ -82,8 +85,8 @@ describe('sectionAgents', () => {
     expect(agentSection(agent({ status: 'running', source: 'claude-app' }))).toBe('working')
     expect(agentSection(agent({ status: 'failed' }))).toBe('needs')
     expect(agentSection(agent({ status: 'idle', unread: true }))).toBe('needs')
-    expect(agentSection(agent({ status: 'stopped', unread: true }))).toBe('recent')
-    expect(agentSection(agent({ status: 'idle' }))).toBe('recent')
+    expect(agentSection(agent({ status: 'stopped', unread: true }))).toBe('prot')
+    expect(agentSection(agent({ status: 'idle' }))).toBe('prot')
     expect(agentSection(agent({ source: 'claude-app' }))).toBe('claude-app')
     expect(agentSection(agent({ source: 'codex-app', provider: 'codex' }))).toBe('codex-app')
   })
@@ -97,8 +100,8 @@ describe('sectionAgents', () => {
       ],
       ['codex']
     )
-    expect(sections.recent.agents.map((a) => a.id)).toEqual(['new', 'old'])
-    expect(sections.recent.total).toBe(3)
+    expect(sections.prot.agents.map((a) => a.id)).toEqual(['new', 'old'])
+    expect(sections.prot.total).toBe(3)
     expect(sections.working.total).toBe(0)
   })
 })
@@ -190,5 +193,40 @@ describe('composer choice', () => {
   it('parses stored choices defensively', () => {
     expect(parseChoice(null)).toBeNull()
     expect(parseChoice({ provider: 'gemini', model: 3, worktree: false })).toEqual({ worktree: false })
+  })
+})
+
+describe('transcript runs', () => {
+  const at = '2026-10-07T00:00:00Z'
+  const tool = (id: string, status: 'running' | 'ok' | 'error', name = 'Bash'): ToolEvent => ({ kind: 'tool', id, at, name, summary: id, output: null, status })
+
+  it('folds tool calls and the thinking between them into one run per gap between messages', () => {
+    const events: AgentEvent[] = [
+      { kind: 'user', id: 'u', at, text: 'go' },
+      tool('t1', 'ok'),
+      { kind: 'thinking', id: 'th', at, text: 'hmm' },
+      tool('t2', 'ok'),
+      { kind: 'assistant', id: 'a', at, text: 'done' },
+      { kind: 'thinking', id: 'th2', at, text: 'alone' },
+      tool('t3', 'running')
+    ]
+    const items = groupTranscript(events)
+    expect(items.map((item) => (item.kind === 'run' ? `run:${item.events.map((e) => e.id).join(',')}` : item.event.id))).toEqual([
+      'u',
+      'run:t1,th,t2',
+      'a',
+      'run:th2,t3'
+    ])
+  })
+
+  it('keeps thinking with no tool calls inline', () => {
+    const items = groupTranscript([{ kind: 'thinking', id: 'th', at, text: 'x' }])
+    expect(items).toEqual([{ kind: 'event', event: { kind: 'thinking', id: 'th', at, text: 'x' } }])
+  })
+
+  it('labels a run by running, completed, subagent and failed counts', () => {
+    expect(runLabel([tool('a', 'ok')])).toBe('1 tool call')
+    expect(runLabel([tool('a', 'ok'), tool('b', 'running'), tool('c', 'running')])).toBe('2 running, 1 completed')
+    expect(runLabel([tool('a', 'ok', 'Task'), tool('b', 'error')])).toBe('2 tool calls · 1 subagent · 1 failed')
   })
 })

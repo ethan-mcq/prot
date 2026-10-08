@@ -45,9 +45,9 @@ export function AgentsScreen({
         />
         <main id="main-pane" className="relative min-w-0 flex-1">
           {selected ? (
-            <AgentView key={selected} id={selected} store={store} onSelect={setSelected} onClosed={() => setSelected(null)} onOpenPull={openPull} />
+            <AgentView key={selected} id={selected} store={store} onSelect={setSelected} onOpenPull={openPull} />
           ) : (
-            <AgentDash store={store} onSelect={setSelected} onOpenPull={openPull} />
+            <AgentDash store={store} onSelect={setSelected} />
           )}
         </main>
       </div>

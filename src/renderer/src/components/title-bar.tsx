@@ -21,7 +21,7 @@ export function TitleBar({
   slotRef?: (element: HTMLElement | null) => void
 }) {
   return (
-    <div className="drag-region flex h-[52px] shrink-0 items-center gap-4 pr-3 pl-[84px]">
+    <div className="drag-region flex h-[52px] shrink-0 items-center gap-4 overflow-hidden pr-3 pl-[84px]">
       <button
         type="button"
         aria-label="Home"

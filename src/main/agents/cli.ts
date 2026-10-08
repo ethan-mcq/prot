@@ -3,7 +3,7 @@ import { constants } from 'node:fs'
 import { access, readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { delimiter, join } from 'node:path'
-import type { AgentModelOption, AgentPermissionOption, AgentProvider } from '@shared/agents'
+import type { AgentModelOption, AgentPermissionOption, AgentProvider, UsageWindow } from '@shared/agents'
 
 const PROBE_TIMEOUT_MS = 15_000
 const PATH_MARK = '__PROT_PATH__'
@@ -166,6 +166,47 @@ export async function probeSignIn(provider: AgentProvider, binary: string, env: 
   }
   const result = await run(binary, ['login', 'status'], env)
   return parseCodexLoginStatus(`${result.stdout}\n${result.stderr}`)
+}
+
+const USAGE_LINE = /^Current (session|week)(?: \(([^)]+)\))?: (\d+(?:\.\d+)?)% used(?: · resets (.+?))?(?: \([^)]*\))?$/
+
+// Parses the text of Claude Code's /usage command, e.g. "Current week (all models): 66% used · resets Oct 12 at 6:59am (America/Los_Angeles)".
+export function parseClaudeUsageText(text: string, now: Date = new Date()): UsageWindow[] {
+  const windows: UsageWindow[] = []
+  for (const line of text.split('\n')) {
+    const match = USAGE_LINE.exec(line.trim())
+    if (!match) continue
+    let label = match[1] === 'session' ? '5 hour' : '7 day'
+    if (match[2] && match[2] !== 'all models') label = `7 day ${match[2]}`
+    windows.push({ label, usedPercent: Number(match[3]), resetsAt: match[4] ? parseResetTime(match[4], now) : null })
+  }
+  return windows
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+function parseResetTime(text: string, now: Date): number | null {
+  const match = /^([A-Z][a-z]{2}) (\d{1,2})(?: at (\d{1,2})(?::(\d{2}))?(am|pm))?$/.exec(text)
+  if (!match) return null
+  const month = MONTHS.indexOf(match[1] ?? '')
+  if (month === -1) return null
+  let hour = match[3] ? Number(match[3]) % 12 : 0
+  if (match[5] === 'pm') hour += 12
+  const date = new Date(now.getFullYear(), month, Number(match[2]), hour, Number(match[4] ?? 0))
+  if (date.getTime() < now.getTime() - 24 * 60 * 60 * 1000) date.setFullYear(date.getFullYear() + 1)
+  return Math.floor(date.getTime() / 1000)
+}
+
+// /usage is answered locally by the CLI: no model call and nothing saved to the session list.
+export async function probeClaudeUsage(binary: string, env: NodeJS.ProcessEnv): Promise<UsageWindow[]> {
+  const result = await run(binary, ['-p', '/usage', '--output-format', 'json', '--no-session-persistence'], env, 30_000)
+  if (result.code !== 0) return []
+  try {
+    const parsed = JSON.parse(result.stdout) as { result?: unknown }
+    return typeof parsed.result === 'string' ? parseClaudeUsageText(parsed.result) : []
+  } catch {
+    return []
+  }
 }
 
 export type ModelDefaults = { model: string; effort: string }

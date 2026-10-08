@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
+  parseClaudeUsageText,
   claudeArgs,
   claudeDefaults,
   claudeModels,
@@ -134,5 +135,24 @@ describe('models', () => {
 
   it('stops reading TOML at the first table', () => {
     expect(parseTopLevelToml('model = "a"\n[x]\nmodel = "b"\n')).toEqual({ model: 'a' })
+  })
+})
+
+describe('parseClaudeUsageText', () => {
+  it('reads the session and weekly limits from /usage, rolling a past reset date into next year', () => {
+    const text = [
+      'You are currently using your subscription to power your Claude Code usage',
+      '',
+      'Current session: 93% used · resets Oct 8 at 12:19am (America/Los_Angeles)',
+      'Current week (all models): 66% used · resets Oct 12 at 6:59am (America/Los_Angeles)',
+      'Current week (Fable): 24% used · resets Jan 2 (America/Los_Angeles)',
+      '  76% of your usage was at >150k context'
+    ].join('\n')
+    const now = new Date(2026, 9, 7, 21, 0)
+    expect(parseClaudeUsageText(text, now)).toEqual([
+      { label: '5 hour', usedPercent: 93, resetsAt: new Date(2026, 9, 8, 0, 19).getTime() / 1000 },
+      { label: '7 day', usedPercent: 66, resetsAt: new Date(2026, 9, 12, 6, 59).getTime() / 1000 },
+      { label: '7 day Fable', usedPercent: 24, resetsAt: new Date(2027, 0, 2).getTime() / 1000 }
+    ])
   })
 })

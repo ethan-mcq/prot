@@ -16,6 +16,12 @@ if (args[0] === 'auth' && args[1] === 'status') {
   process.exit(0)
 }
 
+if (args.includes('/usage')) {
+  const result = 'You are currently using your subscription to power your Claude Code usage\n\nCurrent session: 31% used · resets Oct 8 at 12:19am (America/Los_Angeles)\nCurrent week (all models): 64% used · resets Oct 12 at 6:59am (America/Los_Angeles)\n'
+  console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, num_turns: 0, result, total_cost_usd: 0 }))
+  process.exit(0)
+}
+
 if (process.env.PROT_FAKE_ARGV_LOG) {
   appendFileSync(process.env.PROT_FAKE_ARGV_LOG, `${JSON.stringify({ bin: 'claude', argv: args, cwd: process.cwd() })}\n`)
 }

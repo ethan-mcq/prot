@@ -13,13 +13,13 @@ import { AGENT_PROVIDERS } from '@shared/agents'
 import { relativeTime } from '@/lib/paths'
 import { errorMessage } from '@/lib/utils'
 
-export type AgentSection = 'working' | 'needs' | 'recent' | 'claude-app' | 'codex-app'
+export type AgentSection = 'working' | 'needs' | 'prot' | 'claude-app' | 'codex-app'
 
 // A section with no empty message is hidden while it has nothing in it.
 export const AGENT_SECTIONS: { id: AgentSection; title: string; empty: string | null }[] = [
   { id: 'working', title: 'Working', empty: 'No agents are working.' },
   { id: 'needs', title: 'Needs you', empty: 'Nothing needs you.' },
-  { id: 'recent', title: 'Recent', empty: 'Agents you start show up here.' },
+  { id: 'prot', title: 'prot', empty: 'Agents you start in prot show up here.' },
   { id: 'claude-app', title: 'Claude app', empty: null },
   { id: 'codex-app', title: 'Codex app', empty: null }
 ]
@@ -29,7 +29,7 @@ export function agentSection(agent: AgentSummary): AgentSection {
   if (agent.status === 'failed' || (agent.status === 'idle' && agent.unread)) return 'needs'
   if (agent.source === 'claude-app') return 'claude-app'
   if (agent.source === 'codex-app') return 'codex-app'
-  return 'recent'
+  return 'prot'
 }
 
 export function newestFirst(agents: AgentSummary[]): AgentSummary[] {
@@ -42,7 +42,7 @@ export function sectionAgents(agents: AgentSummary[], hidden: AgentProvider[]): 
   const out: SectionedAgents = {
     working: { agents: [], total: 0 },
     needs: { agents: [], total: 0 },
-    recent: { agents: [], total: 0 },
+    prot: { agents: [], total: 0 },
     'claude-app': { agents: [], total: 0 },
     'codex-app': { agents: [], total: 0 }
   }
@@ -353,4 +353,54 @@ export function useAgents(): AgentsStore {
   }, [])
 
   return { state, error, refreshing, refresh, reload, upsert, remove, addRepo }
+}
+
+export type ToolEvent = Extract<AgentEvent, { kind: 'tool' }>
+
+// A run is the tool calls (and the thinking between them) between two messages; it shows as one row.
+export type TranscriptItem = { kind: 'event'; event: AgentEvent } | { kind: 'run'; id: string; events: AgentEvent[]; tools: ToolEvent[] }
+
+const SUBAGENT_TOOLS = ['Task', 'Agent']
+
+export function groupTranscript(events: AgentEvent[]): TranscriptItem[] {
+  const items: TranscriptItem[] = []
+  let run: Extract<TranscriptItem, { kind: 'run' }> | null = null
+  for (const event of events) {
+    if (event.kind === 'tool' || event.kind === 'thinking') {
+      if (!run) {
+        run = { kind: 'run', id: event.id, events: [], tools: [] }
+        items.push(run)
+      }
+      run.events.push(event)
+      if (event.kind === 'tool') run.tools.push(event)
+      continue
+    }
+    run = null
+    items.push({ kind: 'event', event })
+  }
+  // A run of thinking alone stays inline.
+  const out: TranscriptItem[] = []
+  for (const item of items) {
+    if (item.kind === 'run' && item.tools.length === 0) {
+      for (const event of item.events) out.push({ kind: 'event', event })
+    } else out.push(item)
+  }
+  return out
+}
+
+export function runLabel(tools: ToolEvent[]): string {
+  let running = 0
+  let failed = 0
+  let subagents = 0
+  for (const tool of tools) {
+    if (tool.status === 'running') running += 1
+    if (tool.status === 'error') failed += 1
+    if (SUBAGENT_TOOLS.includes(tool.name)) subagents += 1
+  }
+  const parts: string[] = []
+  if (running > 0) parts.push(`${running} running, ${tools.length - running} completed`)
+  else parts.push(`${tools.length} tool ${tools.length === 1 ? 'call' : 'calls'}`)
+  if (subagents > 0) parts.push(`${subagents} ${subagents === 1 ? 'subagent' : 'subagents'}`)
+  if (failed > 0) parts.push(`${failed} failed`)
+  return parts.join(' · ')
 }

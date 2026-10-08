@@ -41,6 +41,7 @@ import {
   findOnPath,
   loginShellPath,
   PERMISSIONS,
+  probeClaudeUsage,
   probeSignIn,
   probeVersion,
   turnArgs,
@@ -72,6 +73,7 @@ import {
 import type { AgentStore, StoredAgent } from './store'
 
 const REFRESH_MS = 30_000
+const CLAUDE_USAGE_MS = 5 * 60 * 1000
 const PR_TTL_MS = 2 * 60 * 1000
 const RECENT_MS = 24 * 60 * 60 * 1000
 const STOP_GRACE_MS = 5_000
@@ -131,6 +133,7 @@ export class AgentManager {
   private ready: Promise<void> | null = null
   private timer: NodeJS.Timeout | null = null
   private ticking = false
+  private claudeUsageAt = 0
 
   constructor(
     private readonly store: AgentStore,
@@ -373,6 +376,7 @@ export class AgentManager {
   private async load(): Promise<void> {
     try {
       await Promise.all([this.detectProviders(), this.scanOutside(), this.refreshCodexUsage()])
+      void this.refreshClaudeUsage(true)
     } catch (error) {
       console.error('Could not load agents', error)
     }
@@ -512,6 +516,20 @@ export class AgentManager {
     }
   }
 
+  // At most every 5 minutes unless forced; each probe starts the CLI.
+  private async refreshClaudeUsage(force: boolean): Promise<void> {
+    const info = this.providers.get('claude')
+    if (!info?.binary || !info.signedIn) return
+    if (!force && Date.now() - this.claudeUsageAt < CLAUDE_USAGE_MS) return
+    this.claudeUsageAt = Date.now()
+    try {
+      const usage = await probeClaudeUsage(info.binary, await childEnv())
+      if (usage.length > 0 && !sameJson(usage, this.store.usage('claude'))) this.setUsage('claude', usage)
+    } catch {
+      // Keep the last known usage.
+    }
+  }
+
   private async refreshCodexUsage(): Promise<void> {
     try {
       const usage = await latestCodexUsage(codexHome())
@@ -525,7 +543,7 @@ export class AgentManager {
     if (this.ticking) return
     this.ticking = true
     try {
-      await Promise.all([this.scanOutside(), this.refreshCodexUsage()])
+      await Promise.all([this.scanOutside(), this.refreshCodexUsage(), this.refreshClaudeUsage(false)])
       await this.refreshGit(this.recentAgents())
     } catch (error) {
       console.error('Agent refresh failed', error)

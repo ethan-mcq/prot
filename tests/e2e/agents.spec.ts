@@ -112,6 +112,9 @@ test('the dash opens without GitHub, shows both subscriptions signed in and list
   await expect(subs.getByRole('listitem', { name: 'Claude Code' })).toContainText('signed in · claude.ai')
   await expect(subs.getByRole('listitem', { name: 'Claude Code' })).toContainText('v9.9.9')
   await expect(subs.getByRole('listitem', { name: 'Codex' })).toContainText('signed in · ChatGPT')
+  // Claude's limits come from the CLI's local /usage command before any turn runs.
+  await expect(page.getByRole('meter', { name: 'Claude Code 5 hour usage' })).toHaveAttribute('aria-valuenow', '31')
+  await expect(page.getByRole('meter', { name: 'Claude Code 7 day usage' })).toHaveAttribute('aria-valuenow', '64')
   await expect(page.getByRole('combobox', { name: 'Model' })).toHaveText(/Claude Code\s*opus\[1m\]/)
   await expect(page.getByRole('combobox', { name: 'Effort' })).toHaveText('Extra high')
 
@@ -119,7 +122,7 @@ test('the dash opens without GitHub, shows both subscriptions signed in and list
   await expect(section('Codex app').getByRole('button', { name: 'Read a.txt' })).toBeVisible()
   // Promptless and guardian sessions are not listed.
   await expect(section('Codex app').getByRole('button', { name: 'Guardian review' })).toHaveCount(0)
-  await expect(section('Recent')).toContainText('Agents you start show up here.')
+  await expect(section('prot')).toContainText('Agents you start in prot show up here.')
   expect(calls()).toEqual([])
 
   // The theme follows the system until set in PR Review's settings, which the dash has no menu for.
@@ -172,17 +175,21 @@ test('a Claude agent in a new worktree runs with the chosen model, effort and pe
   expect(git(repo, ['rev-parse', '--abbrev-ref', 'HEAD'])).toBe('main')
 
   await expect(transcript().getByText(prompt, { exact: true })).toBeVisible()
-  await expect(transcript().getByRole('button', { name: 'Bash echo hi' })).toBeVisible()
-  await expect(transcript().getByRole('button', { name: 'Bash echo hi' }).getByLabel('ok')).toBeVisible()
+  // Tool calls collapse into one row; their details live in the Activity panel.
+  await expect(transcript().getByRole('button', { name: 'Bash echo hi' })).toHaveCount(0)
+  await transcript().getByRole('button', { name: '1 tool call' }).click()
+  const activity = page.getByRole('complementary', { name: 'Activity' })
+  await expect(activity.getByRole('button', { name: 'Bash echo hi' }).getByLabel('ok')).toBeVisible()
   await expect(transcript()).toContainText('0s · $0.01 · 1.1k in · 20 out')
   await expect(header()).toContainText(`widget · prot/${slug}`)
   await expect(header()).toContainText('Sonnet 5.5')
   await expect(header()).toContainText('idle')
-  await expect(section('Recent').getByRole('button', { name: prompt })).toHaveAttribute('aria-current', 'page')
+  await expect(section('prot').getByRole('button', { name: prompt })).toHaveAttribute('aria-current', 'page')
   await expect(section('Working')).toContainText('No agents are working.')
-  await expect(page.getByRole('complementary', { name: 'Changes' })).toContainText('No changes yet.')
   await settle()
   await shot('32-agent-transcript')
+  await page.getByRole('tab', { name: 'Changes' }).click()
+  await expect(page.getByRole('complementary', { name: 'Changes' })).toContainText('No changes yet.')
 
   // Stand in for edits the agent made: one tracked file changed, one new file.
   writeFileSync(join(cwd, 'README.md'), '# widget\n\nFirst line.\nAdded by the agent.\n')
@@ -253,7 +260,8 @@ test('a Codex agent on the local checkout gets its options before `--` and resum
   await pick('Checkout', 'Local checkout')
   await startAgent(prompt)
   await expect(transcript()).toContainText(`Echo: ${prompt}`)
-  await expect(transcript().getByRole('button', { name: /echo hi/ })).toBeVisible()
+  await transcript().getByRole('button', { name: '1 tool call' }).click()
+  await expect(page.getByRole('complementary', { name: 'Activity' }).getByRole('button', { name: /echo hi/ })).toBeVisible()
   await expect(header()).toContainText('widget · main')
 
   const options = ['exec', '--json', '-m', 'gpt-6-astra', '-c', 'model_reasoning_effort="xhigh"', '-s', 'workspace-write', '-C', repo, '--skip-git-repo-check']
@@ -289,10 +297,10 @@ test('a Codex agent on the local checkout gets its options before `--` and resum
   await expect(sidebar().getByRole('button', { name: 'Refresh agents' })).toBeEnabled()
   await expect(section('Codex app').getByRole('button')).toHaveText([/Codex app/, /Read a\.txt/])
   await expect(sidebar().getByRole('button', { name: prompt })).toHaveCount(1)
-  await section('Recent').getByRole('button', { name: prompt }).click()
+  await section('prot').getByRole('button', { name: prompt }).click()
   await expect(transcript()).toContainText(`Echo: ${prompt}`)
   await expect(transcript()).toContainText('Echo: And the tests?')
-  await expect(transcript().getByRole('button', { name: /echo hi/ })).toHaveCount(2)
+  await expect(page.getByRole('complementary', { name: 'Activity' }).getByRole('button', { name: /echo hi/ })).toHaveCount(2)
 })
 
 test('Stop interrupts a running turn: the CLI gets SIGINT and the agent ends stopped', async () => {
@@ -305,7 +313,7 @@ test('Stop interrupts a running turn: the CLI gets SIGINT and the agent ends sto
 
   await expect(header()).toContainText('running')
   await expect(section('Working').getByRole('button', { name: prompt })).toBeVisible()
-  await expect(transcript().getByRole('button', { name: 'Bash echo hi' }).getByLabel('running')).toBeVisible()
+  await expect(transcript().getByRole('button', { name: '1 running, 0 completed' })).toBeVisible()
   await expect(page.getByRole('textbox', { name: 'Message agent' })).toBeDisabled()
   await page.getByRole('button', { name: 'New agent' }).click()
   await expect(page.getByRole('region', { name: 'Working now' }).getByRole('button', { name: prompt })).toBeVisible()
@@ -314,8 +322,9 @@ test('Stop interrupts a running turn: the CLI gets SIGINT and the agent ends sto
   await page.getByRole('button', { name: 'Stop agent' }).click()
   await expect(header()).toContainText('stopped')
   await expect(page.getByRole('button', { name: 'Stop agent' })).toHaveCount(0)
-  await expect(transcript().getByRole('button', { name: 'Bash echo hi' }).getByLabel('error')).toBeVisible()
-  await expect(section('Recent').getByRole('button', { name: prompt })).toBeVisible()
+  await transcript().getByRole('button', { name: '1 tool call · 1 failed' }).click()
+  await expect(page.getByRole('complementary', { name: 'Activity' }).getByRole('button', { name: 'Bash echo hi' }).getByLabel('error')).toBeVisible()
+  await expect(section('prot').getByRole('button', { name: prompt })).toBeVisible()
   await expect(section('Working')).toContainText('No agents are working.')
   expect(calls().filter((call) => call.signal !== undefined)).toEqual([{ bin: 'claude', signal: 'SIGINT' }])
   await expect(page.getByRole('textbox', { name: 'Message agent' })).toBeEnabled()
@@ -346,7 +355,7 @@ test('sending to a Claude app session forks it into a new prot agent that keeps 
   await page.getByRole('textbox', { name: 'Message agent' }).fill('Carry on with the tests')
   await page.getByRole('button', { name: 'Continue in prot' }).click()
 
-  const forked = section('Recent').getByRole('button', { name: 'Fix login redirect loop' })
+  const forked = section('prot').getByRole('button', { name: 'Fix login redirect loop' })
   await expect(forked).toHaveAttribute('aria-current', 'page')
   await expect(transcript()).toContainText('Echo: Carry on with the tests')
   await expect(transcript()).toContainText('Opened a PR with the fix.')

@@ -380,8 +380,14 @@ function StepTabs() {
   const listRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    const active = listRef.current?.querySelector<HTMLElement>('[aria-selected="true"]')
-    active?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    // scrollIntoView would also scroll the window's own layout sideways, under the traffic lights.
+    const list = listRef.current
+    const active = list?.querySelector<HTMLElement>('[aria-selected="true"]')
+    if (!list || !active) return
+    const left = active.offsetLeft - list.offsetLeft - 24
+    const right = left + active.offsetWidth + 48
+    if (left < list.scrollLeft) list.scrollLeft = left
+    else if (right > list.scrollLeft + list.clientWidth) list.scrollLeft = right - list.clientWidth
   }, [session.step])
 
   return (

@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { ArrowUp, Bot, Folder, FolderGit2, GitBranch, LoaderCircle, Plus, RefreshCw, ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
-import type { AgentPr, AgentRepo, AgentsState, AgentSummary, ProviderInfo } from '@shared/agents'
+import type { AgentRepo, AgentsState, AgentSummary, ProviderInfo } from '@shared/agents'
 import { PROVIDER_NAMES } from '@shared/agents'
 import { Button } from '@/components/ui/button'
 import {
@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Frame, PaneButton, PaneHeader } from '@/components/pane'
-import { PrIcon, ProviderMark } from '@/components/agent-bits'
+import { ProviderMark } from '@/components/agent-bits'
 import {
   chooseModel,
   effortLabel,
@@ -39,12 +39,10 @@ const PICKER =
 
 export function AgentDash({
   store,
-  onSelect,
-  onOpenPull
+  onSelect
 }: {
   store: AgentsStore
   onSelect: (id: string) => void
-  onOpenPull: (pr: AgentPr) => void
 }) {
   const { state, refreshing, refresh } = store
   const [choice, setChoice] = useState<ComposerChoice | null>(null)
@@ -89,7 +87,6 @@ export function AgentDash({
         {state && (
           <div className="mx-auto mt-10 grid max-w-[1100px] grid-cols-1 gap-x-4 gap-y-6 @3xl:grid-cols-2">
             <WorkingTile state={state} onSelect={onSelect} />
-            <PullsTile agents={state.agents} onOpenPull={onOpenPull} />
             <SubscriptionsTile providers={state.providers} />
             <WorktreesTile agents={state.agents} onSelect={onSelect} onRemoved={() => void store.reload()} />
             <ReposTile repos={state.repos} onUse={(repoPath) => update({ repoPath })} />
@@ -418,48 +415,10 @@ function WorkingTile({ state, onSelect }: { state: AgentsState; onSelect: (id: s
   )
 }
 
-function PullsTile({ agents, onOpenPull }: { agents: AgentSummary[]; onOpenPull: (pr: AgentPr) => void }) {
-  const seen = new Set<string>()
-  const pulls: AgentPr[] = []
-  for (const agent of newestFirst(agents)) {
-    if (!agent.pr || seen.has(agent.pr.url)) continue
-    seen.add(agent.pr.url)
-    pulls.push(agent.pr)
-  }
-  return (
-    <Tile index={2} title="Pull requests" count={pulls.length}>
-      {pulls.length === 0 ? (
-        <Empty>No agent branch has a pull request yet.</Empty>
-      ) : (
-        <ul className="space-y-px">
-          {pulls.map((pr) => (
-            <li key={pr.url}>
-              <button
-                type="button"
-                aria-label={`Open pull request ${pr.owner}/${pr.repo}#${pr.number}`}
-                title={pr.title}
-                onClick={() => onOpenPull(pr)}
-                className={ROW}
-              >
-                <PrIcon pr={pr} className="size-3.5" />
-                <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">{pr.title}</span>
-                <span className="shrink-0 font-mono text-[10.5px] text-muted-foreground">
-                  {pr.repo}#{pr.number}
-                </span>
-                <span className="w-12 shrink-0 text-right font-mono text-[10.5px] text-muted-foreground">{pr.state}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </Tile>
-  )
-}
-
 function SubscriptionsTile({ providers }: { providers: ProviderInfo[] }) {
   const now = useNow(60000)
   return (
-    <Tile index={3} title="Subscriptions" count={providers.filter(providerReady).length}>
+    <Tile index={2} title="Subscriptions" count={providers.filter(providerReady).length}>
       <ul className="space-y-3 px-1.5 py-1">
         {providers.map((info) => {
           const problem = providerProblem(info)
@@ -539,7 +498,7 @@ function WorktreesTile({
   }
 
   return (
-    <Tile index={4} title="Worktrees" count={withTree.length}>
+    <Tile index={3} title="Worktrees" count={withTree.length}>
       {withTree.length === 0 ? (
         <Empty>No agent worktrees.</Empty>
       ) : (
@@ -606,7 +565,7 @@ function WorktreesTile({
 
 function ReposTile({ repos, onUse }: { repos: AgentRepo[]; onUse: (path: string) => void }) {
   return (
-    <Tile index={5} title="Recent repos" count={repos.length}>
+    <Tile index={4} title="Recent repos" count={repos.length}>
       {repos.length === 0 ? (
         <Empty>Add a repo from the composer.</Empty>
       ) : (
