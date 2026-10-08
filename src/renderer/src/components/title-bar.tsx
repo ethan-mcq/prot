@@ -1,4 +1,4 @@
-import { createContext, useContext, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Logo } from '@/components/logo'
 
@@ -20,8 +20,9 @@ export function TitleBar({
   onHome: () => void
   slotRef?: (element: HTMLElement | null) => void
 }) {
+  useZoomVar()
   return (
-    <div className="drag-region flex h-[52px] shrink-0 items-center gap-4 overflow-hidden pr-3 pl-[84px]">
+    <div className="drag-region title-inset flex shrink-0 items-center gap-4 overflow-hidden pr-3">
       <button
         type="button"
         aria-label="Home"
@@ -38,4 +39,17 @@ export function TitleBar({
       <div ref={slotRef} className="flex min-w-0 flex-1 items-center gap-2" />
     </div>
   )
+}
+
+// ⌘+/⌘- scale CSS pixels but not the traffic lights, so the inset is sized in window pixels.
+function useZoomVar() {
+  useEffect(() => {
+    const update = () => {
+      const zoom = window.innerWidth > 0 ? window.outerWidth / window.innerWidth : 1
+      document.documentElement.style.setProperty('--zoom', String(Math.round(zoom * 100) / 100))
+    }
+    update()
+    window.addEventListener('resize', update)
+    return () => window.removeEventListener('resize', update)
+  }, [])
 }

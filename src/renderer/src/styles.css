@@ -184,6 +184,11 @@
   .drag-region {
     -webkit-app-region: drag;
   }
+  /* Never smaller than the traffic lights in window pixels, at any zoom. */
+  .title-inset {
+    height: max(52px, calc(52px / var(--zoom, 1)));
+    padding-left: max(84px, calc(84px / var(--zoom, 1)));
+  }
   .no-drag {
     -webkit-app-region: no-drag;
   }
